@@ -1,0 +1,13 @@
+{
+  "name": "gestor-comunidades",
+  "private": true,
+  "description": "Software web para administradores de fincas",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "demo": "node tools/gen_demo.mjs",
+    "ejemplos": "node tools/gen_ejemplos.mjs"
+  },
+  "devDependencies": {
+    "@xmldom/xmldom": "0.8.10"
+  }
+}

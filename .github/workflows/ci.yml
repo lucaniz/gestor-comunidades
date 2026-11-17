@@ -11,9 +11,11 @@ jobs:
         with:
           node-version: 22
       - name: Comprobar sintaxis
-        run: for f in js/*.js config.js; do node --check "$f"; done
-      - name: Tests de lógica (reparto, IBAN, SEPA, CSV)
-        run: node --test tests/*.test.mjs
+        run: for f in js/*.js config.js sw.js; do node --check "$f"; done
+      - name: Tests de lógica (repartos, IBAN, SEPA, Norma 43, CSV)
+        run: |
+          npm install --no-audit --no-fund
+          npm test
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

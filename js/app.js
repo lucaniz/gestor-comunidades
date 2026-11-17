@@ -5,7 +5,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const EUR=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',useGrouping:'always'});
 const eur=n=>EUR.format(+n||0);
 const PCT=new Intl.NumberFormat('es-ES',{maximumFractionDigits:4});
-const {num,r2,sum,pad,today,addDays,daysBetween,fd,fdLong,ibanClean,ibanValid,ibanFmt,creditorId,buildPain008,splitByCoef,parseCSV,toCSV}=GC;
+const {num,r2,sum,pad,today,addDays,daysBetween,fd,fdLong,ibanClean,ibanValid,ibanFmt,creditorId,buildPain008,coefOf,splitByCoef,cuotaPresupuesto,parseNorma43,parsePain002,MOTIVOS_DEVOLUCION,e2eRecibo,norm,parecido,parseCSV,toCSV}=GC;
 const cap=s=>String(s).charAt(0).toUpperCase()+String(s).slice(1);
 const byRef=(a,b)=>String(a.ref||'').localeCompare(String(b.ref||''),'es',{numeric:true});
 function lsGet(k){ try{ return localStorage.getItem('gc_'+k); }catch(e){ return null; } }
@@ -21,8 +21,11 @@ const cloudConfigured=()=>!!(CFG.supabaseUrl&&CFG.supabaseAnonKey);
 
 async function boot(){
   route();
+  const params=new URLSearchParams(location.search);
+  if(params.get('alta')&&window.bootAlta) return bootAlta(params.get('alta'));
   try{
-    if(cloudConfigured()&&lsGet('modo')!=='local'){
+    if(window.GC_DEMO_MODE){ S.mode='local'; S.demo=true; store=GCStore.local(COLS,'gc_demo_v1'); }
+    else if(cloudConfigured()&&lsGet('modo')!=='local'){
       if(!window.supabase){ S.mode='error'; S.error='No se ha podido cargar la librería de Supabase. Comprueba la conexión a internet.'; return render(); }
       sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey);
       const {data:{session}}=await sb.auth.getSession();
@@ -33,7 +36,7 @@ async function boot(){
       const {data,error}=await sb.from('miembros').select('rol,despacho_id,despachos(nombre)').eq('user_id',S.user.id);
       if(error) throw GCStore.mapErr(error);
       S.despachos=data.map(m=>({id:m.despacho_id,nombre:(m.despachos||{}).nombre||'Despacho',rol:m.rol})).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
-      if(!S.despachos.length){ S.mode='nuevoDespacho'; return render(); }
+      if(!S.despachos.length){ if(window.bootPortal&&await bootPortal()) return; S.mode='nuevoDespacho'; return render(); }
       S.despacho=S.despachos.find(d=>d.id===lsGet('despacho'))||S.despachos[0];
       S.mode='cloud'; store=GCStore.supabase(sb,S.despacho.id,COLS);
     } else { S.mode='local'; store=GCStore.local(COLS); }
@@ -43,6 +46,7 @@ async function boot(){
   store.watchDoc('config','despacho',d=>{ S.config=d||{}; schedule(); },errCb);
   setTimeout(()=>{ if(!allLoaded()){ S.slow=true; render(); } },10000);
   render();
+  if(S.demo) setTimeout(async()=>{ if(!S.comunidades.length){ let n=0; try{ for(const c of COLS) for(const {id,...o} of ((window.GC_DEMO||{})[c]||[])){ await store.set(c,id,o); n++; } if(window.GC_DEMO.config&&!S.config.nombre) await store.set('config','despacho',window.GC_DEMO.config); }catch(e){ console.warn(e); } if(n) toast('Demostración con datos ficticios'); } },50);
 }
 const allLoaded=()=>COLS.every(c=>S.loaded[c]);
 let _raf=0; function schedule(){ if(_raf) return; _raf=requestAnimationFrame(()=>{_raf=0; render();}); }
@@ -56,9 +60,11 @@ async function retry(fn){ try{ return await fn(); }catch(e){ if(e&&e.code==='una
 /* ---------- pantallas de acceso (versión con servidor) ---------- */
 function vLogin(){
   return `<div class="auth card"><h1>Gestor de Comunidades</h1>
-  <p class="sub" style="margin:0">Entra con tu email. Te enviamos un enlace de acceso, sin contraseña.</p>
+  <p class="sub" style="margin:0">Entra con tu email: te enviamos un código de acceso. No hay contraseñas.</p>
   <form id="loginForm" class="stack" style="gap:10px"><label class="sub" for="lg_email" style="display:flex;flex-direction:column;gap:4px;font-weight:600">Email<input id="lg_email" type="email" required autocomplete="email" placeholder="tu@despacho.es"></label>
-  <button class="btn pri" type="submit">Enviarme el enlace de acceso</button></form><p id="lg_msg" class="sub" role="status" style="margin:0"></p>
+  <button class="btn pri" type="submit">Enviarme el código de acceso</button></form><p id="lg_msg" class="sub" role="status" style="margin:0"></p>
+  <form id="codeForm" class="stack" style="gap:10px" hidden><label class="sub" for="lg_code" style="display:flex;flex-direction:column;gap:4px;font-weight:600">Código de 6 dígitos del email<input id="lg_code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,8}" maxlength="8" required></label>
+  <button class="btn pri" type="submit">Entrar</button></form>
   <hr style="border:0;border-top:1px solid var(--line);width:100%">
   <p class="sub" style="margin:0">¿Solo quieres echar un vistazo? <button class="btn link" data-act="modoLocal">Probar sin registrarte</button>. Los datos se guardan únicamente en este navegador.</p></div>`;
 }
@@ -67,13 +73,17 @@ function vNuevoDespacho(){
   <p class="sub" style="margin:0">Has entrado como <b>${esc(S.user&&S.user.email)}</b>. Un despacho agrupa tus comunidades; solo tú y las personas que invites lo veréis.</p>
   <form id="despachoForm" class="stack" style="gap:10px"><label class="sub" for="nd_nombre" style="display:flex;flex-direction:column;gap:4px;font-weight:600">Nombre del despacho<input id="nd_nombre" type="text" required placeholder="Ej.: Administraciones García"></label>
   <button class="btn pri" type="submit">Crear despacho</button></form><p id="nd_msg" class="sub" role="status" style="margin:0"></p>
-  <p class="sub" style="margin:0">Si un compañero te ha invitado a su despacho, pídele que te añada con este email desde Ajustes → Equipo y vuelve a entrar.</p>
+  <p class="sub" style="margin:0">Si un compañero te ha invitado a su despacho, pídele que te añada con este email desde Ajustes → Equipo y vuelve a entrar. Si eres <b>propietario</b>, pide a tu administrador que registre este email en tu piso para ver tus recibos aquí.</p>
   <p style="margin:0"><button class="btn link" data-act="logout">Salir</button></p></div>`;
 }
 document.addEventListener('submit',async e=>{
   if(e.target.id==='loginForm'){ e.preventDefault(); const email=$('#lg_email').value.trim(), msg=$('#lg_msg'), btn=e.target.querySelector('button'); btn.disabled=true; msg.textContent='Enviando…';
     const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
-    btn.disabled=false; msg.textContent=error?('No se ha podido enviar: '+error.message):`Listo. Abre el enlace que te hemos enviado a ${email} desde este mismo navegador.`; }
+    btn.disabled=false; if(error){ msg.textContent='No se ha podido enviar: '+error.message; return; }
+    msg.textContent=`Te hemos enviado un email a ${email}. Escribe aquí el código (o abre el enlace desde este mismo navegador).`; const cf=$('#codeForm'); cf.hidden=false; cf.dataset.email=email; $('#lg_code').focus(); }
+  if(e.target.id==='codeForm'){ e.preventDefault(); const msg=$('#lg_msg'), btn=e.target.querySelector('button'); btn.disabled=true; msg.textContent='Comprobando…';
+    const {error}=await sb.auth.verifyOtp({email:e.target.dataset.email,token:$('#lg_code').value.trim(),type:'email'});
+    btn.disabled=false; if(error){ msg.textContent='Código incorrecto o caducado. Pide otro.'; return; } location.reload(); }
   if(e.target.id==='despachoForm'){ e.preventDefault(); const nombre=$('#nd_nombre').value.trim(), msg=$('#nd_msg'), btn=e.target.querySelector('button'); btn.disabled=true; msg.textContent='Creando…';
     const {data,error}=await sb.rpc('crear_despacho',{p_nombre:nombre});
     if(error){ btn.disabled=false; msg.textContent='No se ha podido crear: '+error.message; return; }
@@ -93,10 +103,12 @@ const sortedComs=()=>[...S.comunidades].sort((a,b)=>String(a.nombre).localeCompa
 const inCid=x=>ui.cid==='all'||x.cid===ui.cid;
 const unitsOf=cid=>S.unidades.filter(u=>u.cid===cid).sort(byRef);
 const PPY={mensual:12,trimestral:4,semestral:2,anual:1};
+// Presupuesto anual: suma de partidas si la comunidad las tiene; si no, el importe global.
+const presupuestoDe=k=>(k&&Array.isArray(k.partidas)&&k.partidas.length)?sum(k.partidas.map(p=>p.importe)):num(k&&k.presupuestoAnual);
 let D=null;
 function derive(){
   const t=today(), y=t.slice(0,4); const c={}, debt={}, overdue={};
-  for(const k of S.comunidades) c[k.id]={cobrado:0,pendiente:0,vencido:0,gastosPag:0,gastosAnio:0,morosos:new Set(),inc:0,prox:null,ordinaria:false,units:0,coef:0,saldo:0,fondoMin:r2(num(k.presupuestoAnual)*num(k.fondoReservaPct)/100)};
+  for(const k of S.comunidades) c[k.id]={cobrado:0,pendiente:0,vencido:0,gastosPag:0,gastosAnio:0,morosos:new Set(),inc:0,prox:null,ordinaria:false,units:0,coef:0,saldo:0,ingresosCob:0,fondoMin:r2(presupuestoDe(k)*num(k.fondoReservaPct)/100)};
   for(const u of S.unidades){ const x=c[u.cid]; if(x){ x.units++; x.coef+=num(u.coef); } }
   for(const r of S.recibos){ const x=c[r.cid]; if(!x) continue; const k=com(r.cid);
     if(r.estado==='cobrado'){ if(!k.saldoFecha||!r.fechaCobro||r.fechaCobro>=k.saldoFecha) x.cobrado+=num(r.importe); }
@@ -104,11 +116,13 @@ function derive(){
   for(const g of S.gastos){ const x=c[g.cid]; if(!x) continue; const k=com(g.cid);
     if(g.pagado&&(!k.saldoFecha||!g.fecha||g.fecha>=k.saldoFecha)) x.gastosPag+=num(g.importe);
     if(String(g.fecha).startsWith(y)) x.gastosAnio+=num(g.importe); }
+  for(const i of (S.ingresos||[])){ const x=c[i.cid]; if(!x) continue; const k=com(i.cid);
+    if(i.cobrado!==false&&(!k.saldoFecha||!i.fecha||i.fecha>=k.saldoFecha)) x.ingresosCob+=num(i.importe); }
   for(const i of S.incidencias){ const x=c[i.cid]; if(x&&i.estado!=='cerrada') x.inc++; }
   for(const j of S.juntas){ const x=c[j.cid]; if(!x) continue;
     if(j.tipo==='ordinaria'&&String(j.fecha).startsWith(y)) x.ordinaria=true;
     if(j.estado==='convocada'&&j.fecha>=t&&(!x.prox||j.fecha<x.prox.fecha)) x.prox=j; }
-  for(const k of S.comunidades){ const x=c[k.id]; x.saldo=r2(num(k.saldoInicial)+x.cobrado-x.gastosPag); x.coef=r2(x.coef*10000)/10000; }
+  for(const k of S.comunidades){ const x=c[k.id]; x.saldo=r2(num(k.saldoInicial)+x.cobrado+x.ingresosCob-x.gastosPag); x.coef=r2(x.coef*10000)/10000; }
   return {c,debt,overdue,t,y};
 }
 function avisos(k){ const x=D.c[k.id], a=[];
@@ -180,6 +194,10 @@ const NOUN={comunidades:'comunidad',unidades:'piso o local',recibos:'recibo',gas
 function comOpts(v,withAll){ return (withAll?'<option value="all">Todas las comunidades</option>':'<option value="">— Elige comunidad —</option>')+sortedComs().map(c=>`<option value="${esc(c.id)}" ${c.id===v?'selected':''}>${esc(c.nombre)}</option>`).join(''); }
 function unitOpts(cid,v,optional){ const us=S.unidades.filter(u=>u.cid===cid).sort(byRef); return (optional||!us.length?`<option value="">${us.length?'— Ninguno —':'— Elige primero la comunidad —'}</option>`:'')+us.map(u=>`<option value="${esc(u.id)}" ${u.id===v?'selected':''}>${esc(unitLabel(u))}</option>`).join(''); }
 function provOpts(v){ return '<option value="">— Sin proveedor —</option>'+[...S.proveedores].sort((a,b)=>String(a.nombre).localeCompare(b.nombre,'es')).map(p=>`<option value="${esc(p.id)}" ${p.id===v?'selected':''}>${esc(p.nombre)}</option>`).join(''); }
+// Tipos de campo adicionales que registran otros módulos: FIELD_TYPES[tipo]=(f,v,data,id)=>html; con .dep=true se recalculan al cambiar de comunidad.
+const FIELD_TYPES={};
+// Ajustes antes de guardar un formulario (cálculos derivados): BEFORE_SAVE[colección]=(datos, original)=>void
+const BEFORE_SAVE={};
 function fieldHtml(f,v,data){
   const id='f_'+f.k, full=(f.full||f.t==='textarea')?' full':'';
   if(f.t==='check') return `<label class="chk${full}"><input type="checkbox" id="${id}" ${v?'checked':''}> ${esc(f.l)}</label>`;
@@ -193,7 +211,7 @@ function fieldHtml(f,v,data){
     case 'number': inp=`<input id="${id}" type="text" inputmode="decimal" autocomplete="off" value="${v===undefined||v===null||v===''?'':esc(String(v).replace('.',','))}">`; break;
     case 'date': case 'time': case 'email': inp=`<input id="${id}" type="${f.t}" value="${esc(v)}">`; break;
     case 'iban': inp=`<input id="${id}" type="text" spellcheck="false" autocomplete="off" value="${esc(v?ibanFmt(v):'')}">`; break;
-    default: inp=`<input id="${id}" type="text" value="${esc(v)}">`;
+    default: inp=FIELD_TYPES[f.t]?FIELD_TYPES[f.t](f,v,data,id):`<input id="${id}" type="text" value="${esc(v)}">`;
   }
   return `<label class="${full.trim()}" for="${id}">${esc(f.l)}${f.req?' *':''}${inp}${f.hint?`<small>${esc(f.hint)}</small>`:''}</label>`;
 }
@@ -324,14 +342,14 @@ function vPanelCom(k){
   const mor=us.filter(u=>D.debt[u.id]>0).map(u=>[u,D.debt[u.id],D.overdue[u.id]||0]).sort((a,b)=>b[1]-a[1]);
   const juntas=S.juntas.filter(j=>j.cid===k.id).sort((a,b)=>String(b.fecha).localeCompare(a.fecha)).slice(0,4);
   const incs=S.incidencias.filter(i=>i.cid===k.id&&i.estado!=='cerrada').sort((a,b)=>String(b.fecha).localeCompare(a.fecha));
-  const cuota=num(k.presupuestoAnual)/(PPY[k.periodicidad]||4);
+  const cuota=presupuestoDe(k)/(PPY[k.periodicidad]||4);
   return `${head(k.nombre,esc([k.direccion,k.cp,k.ciudad].filter(Boolean).join(', '))+(k.presidente?' · Presidencia: '+esc(k.presidente):''),`<button class="btn" data-act="edit" data-col="comunidades" data-id="${esc(k.id)}">Editar comunidad</button><button class="btn pri" data-act="genRecibos">Generar recibos</button>`)}
   ${avisos(k).length?`<div class="notice">${chips(avisos(k))}</div>`:''}
   <div class="tiles">
     ${tile('Saldo estimado',eur(x.saldo),k.saldoFecha?'desde '+esc(fd(k.saldoFecha)):'saldo inicial + cobros − pagos')}
     ${tile('Pendiente de cobro',eur(x.pendiente),eur(x.vencido)+' ya vencido',x.vencido>0?'bad':'')}
-    ${tile('Fondo de reserva mínimo',eur(x.fondoMin),esc(PCT.format(num(k.fondoReservaPct)))+' % de '+eur(k.presupuestoAnual))}
-    ${tile('Gastos '+D.y,eur(x.gastosAnio),'presupuesto '+eur(k.presupuestoAnual))}
+    ${tile('Fondo de reserva mínimo',eur(x.fondoMin),esc(PCT.format(num(k.fondoReservaPct)))+' % de '+eur(presupuestoDe(k)))}
+    ${tile('Gastos '+D.y,eur(x.gastosAnio),'presupuesto '+eur(presupuestoDe(k)))}
     ${tile('Cuota '+(k.periodicidad||'trimestral'),eur(cuota),'a repartir por coeficiente')}
   </div>
   <div class="cols">
@@ -350,7 +368,7 @@ function vComunidades(){
   const cs=sortedComs();
   return `${head('Comunidades',`${cs.length} comunidades administradas. El identificador de acreedor SEPA se calcula a partir del CIF.`,`<button class="btn pri" data-act="new" data-col="comunidades">Nueva comunidad</button>`)}
   <div class="tw"><table class="tbl"><thead><tr><th>Comunidad</th><th>CIF</th><th>IBAN</th><th>ID acreedor SEPA</th><th class="r">Presupuesto</th><th>Cuotas</th><th class="r">Honorarios</th><th></th></tr></thead><tbody>
-  ${cs.length?cs.map(k=>`<tr><td><button class="btn link" data-act="selCom" data-id="${esc(k.id)}">${esc(k.nombre)}</button><div class="sub">${esc(k.presidente?'Presidencia: '+k.presidente:'')}</div></td><td class="nw">${esc(k.cif||'—')}</td><td class="nw">${k.iban?(ibanValid(k.iban)?esc(ibanFmt(k.iban)):'<span class="pill bad">IBAN no válido</span>'):'<span class="sub">—</span>'}</td><td class="nw">${esc(creditorId(k.cif,k.sepaSufijo)||'—')}</td><td class="r">${eur(k.presupuestoAnual)}</td><td>${esc(cap(k.periodicidad||'trimestral'))}</td><td class="r">${eur(k.honorariosMes)}</td><td class="ra"><button class="btn sm" data-act="edit" data-col="comunidades" data-id="${esc(k.id)}">Editar</button> <button class="btn sm danger" data-act="delCom" data-id="${esc(k.id)}">Borrar</button></td></tr>`).join(''):'<tr><td colspan="8" class="empty">Todavía no hay comunidades.</td></tr>'}
+  ${cs.length?cs.map(k=>`<tr><td><button class="btn link" data-act="selCom" data-id="${esc(k.id)}">${esc(k.nombre)}</button><div class="sub">${esc(k.presidente?'Presidencia: '+k.presidente:'')}</div></td><td class="nw">${esc(k.cif||'—')}</td><td class="nw">${k.iban?(ibanValid(k.iban)?esc(ibanFmt(k.iban)):'<span class="pill bad">IBAN no válido</span>'):'<span class="sub">—</span>'}</td><td class="nw">${esc(creditorId(k.cif,k.sepaSufijo)||'—')}</td><td class="r">${eur(presupuestoDe(k))}</td><td>${esc(cap(k.periodicidad||'trimestral'))}</td><td class="r">${eur(k.honorariosMes)}</td><td class="ra"><button class="btn sm" data-act="edit" data-col="comunidades" data-id="${esc(k.id)}">Editar</button> <button class="btn sm danger" data-act="delCom" data-id="${esc(k.id)}">Borrar</button></td></tr>`).join(''):'<tr><td colspan="8" class="empty">Todavía no hay comunidades.</td></tr>'}
   </tbody></table></div>`;
 }
 function vPropietarios(){
@@ -417,6 +435,14 @@ function vProveedores(){
   ${ps.length?ps.map(p=>`<tr><td><b>${esc(p.nombre)}</b><div class="sub">${esc(p.cif||'')}</div></td><td>${esc(p.servicio||'')}</td><td class="sub">${esc(p.telefono||'')}${p.telefono&&p.email?'<br>':''}${esc(p.email||'')}</td><td class="r">${eur(sum(S.gastos.filter(g=>g.provId===p.id&&String(g.fecha).startsWith(y)&&inCid(g)).map(g=>g.importe)))}</td><td class="ra"><button class="btn sm" data-act="edit" data-col="proveedores" data-id="${esc(p.id)}">Editar</button> <button class="btn sm danger" data-act="del" data-col="proveedores" data-id="${esc(p.id)}">Borrar</button></td></tr>`).join(''):'<tr><td colspan="5" class="empty">No hay proveedores.</td></tr>'}
   </tbody></table></div>`;
 }
+function vInstalar(){
+  const st=window.GCInstall?GCInstall.estado():'manual';
+  const txt={instalada:'<p style="margin:0"><span class="pill ok">Instalada</span> Estás usando la aplicación instalada.</p>',
+    boton:'<p class="sub" style="margin:0">Instálala en este dispositivo: tendrás su icono y se abrirá en su propia ventana, como cualquier aplicación.</p><div class="acts"><button class="btn pri" data-act="instalar">Instalar la aplicación</button></div>',
+    ios:'<p class="sub" style="margin:0">En iPhone o iPad: abre esta página en Safari, pulsa <b>Compartir</b> (el cuadrado con la flecha) y elige <b>Añadir a pantalla de inicio</b>.</p>',
+    manual:'<p class="sub" style="margin:0">En Android, Chrome o Edge: menú del navegador → <b>Instalar aplicación</b> (o "Añadir a pantalla de inicio"). En iPhone: Safari → Compartir → <b>Añadir a pantalla de inicio</b>.</p>'}[st];
+  return `<div class="card"><h2>Aplicación en el móvil y el ordenador</h2>${txt}</div>`;
+}
 function vAjustes(){
   const c=S.config; const demo=COLS.reduce((a,col)=>a+S[col].filter(x=>x.demo).length,0); const cloud=S.mode==='cloud';
   if(cloud&&S.equipo===null) setTimeout(loadEquipo,0);
@@ -435,6 +461,7 @@ function vAjustes(){
     <div class="card"><h2>Copia de seguridad</h2><p class="sub" style="margin:0">Descarga todos los datos en un archivo JSON y guárdalo aparte. Con ese archivo puedes restaurarlos aquí o en otra instalación.</p><div class="acts"><button class="btn pri" data-act="backup">Descargar copia</button><button class="btn" data-act="restore">Restaurar copia</button></div></div>
     <div class="card"><h2>Datos de ejemplo</h2>${demo?`<p class="sub" style="margin:0">Hay ${demo} registros de ejemplo (dos comunidades ficticias). Bórralos antes de empezar con tus comunidades reales.</p><div class="acts"><button class="btn danger" data-act="delDemo">Borrar datos de ejemplo</button></div>`:`<p class="sub" style="margin:0">Carga dos comunidades ficticias con pisos, recibos, gastos y juntas para probar todas las funciones.</p><div class="acts"><button class="btn" data-act="loadDemo">Cargar datos de ejemplo</button></div>`}</div>
   </div><div class="stack">
+    ${vInstalar()}
     ${sesion}
     <div class="card"><h2>Dónde se guardan los datos</h2><p style="margin:0">${donde}</p>
       ${S.mode==='local'&&cloudConfigured()?'<div class="acts"><button class="btn pri" data-act="modoCloud">Entrar con mi cuenta</button></div>':''}
@@ -445,7 +472,7 @@ function vAjustes(){
 const VIEW_FN={panel:vPanel,comunidades:vComunidades,propietarios:vPropietarios,recibos:vRecibos,gastos:vGastos,juntas:vJuntas,incidencias:vIncidencias,proveedores:vProveedores,ajustes:vAjustes};
 
 function render(){
-  const gate={login:vLogin,nuevoDespacho:vNuevoDespacho,error:()=>`<div class="auth card"><h1>No se ha podido cargar</h1><p class="notice">${esc(S.error)}</p><div class="acts"><button class="btn pri" onclick="location.reload()">Reintentar</button>${sb?'<button class="btn" data-act="logout">Cerrar sesión</button>':''}${cloudConfigured()?'<button class="btn" data-act="modoLocal">Probar sin cuenta</button>':''}</div></div>`}[S.mode];
+  const gate={login:vLogin,nuevoDespacho:vNuevoDespacho,portal:()=>vPortal(),alta:()=>vAlta(),error:()=>`<div class="auth card"><h1>No se ha podido cargar</h1><p class="notice">${esc(S.error)}</p><div class="acts"><button class="btn pri" onclick="location.reload()">Reintentar</button>${sb?'<button class="btn" data-act="logout">Cerrar sesión</button>':''}${cloudConfigured()?'<button class="btn" data-act="modoLocal">Probar sin cuenta</button>':''}</div></div>`}[S.mode];
   document.body.classList.toggle('gated',!!gate||S.mode==='cargando');
   if(gate){ $('#nav').innerHTML=''; $('#mode').innerHTML=''; $('#view').innerHTML=gate(); const f=$('#view input'); if(f) f.focus(); return; }
   if(ui.cid!=='all'&&allLoaded()&&!com(ui.cid)){ ui.cid='all'; lsSet('cid','all'); }
@@ -457,11 +484,11 @@ function render(){
   $('#csel').innerHTML=comOpts(ui.cid,true);
   $('#mode').innerHTML=S.error?`<span class="pill bad">${esc(S.error)}</span>`
     :S.mode==='cloud'?(!allLoaded()?`<span class="pill mut">${S.slow?'Sin respuesta del servidor todavía':'Cargando…'}</span>`:`<span class="pill ok" title="${esc(S.user.email)}">${esc(S.despacho.nombre)}${S.despacho.rol==='lectura'?' · solo lectura':''}</span>`)
-    :S.mode==='local'?`<a class="pill warn" href="#ajustes" title="Los datos se guardan solo en este navegador">Modo prueba: datos en este navegador</a>`:'';
-  $('#despachoFoot').textContent=S.config.nombre||(S.despacho&&S.despacho.nombre)||'';
+    :S.demo?'<span class="pill">Demostración</span>':S.mode==='local'?`<a class="pill warn" href="#ajustes" title="Los datos se guardan solo en este navegador">Modo prueba: datos en este navegador</a>`:'';
+  $('#despachoFoot').innerHTML=esc(S.config.nombre||(S.despacho&&S.despacho.nombre)||'')+(window.GCInstall&&GCInstall.estado()==='boton'?'<button class="btn sm" data-act="instalar" style="margin-top:8px">Instalar la aplicación</button>':'');
   const sy=$('.main').scrollTop;
   if(S.mode==='cargando'||(S.mode==='cloud'&&!allLoaded()&&!S.comunidades.length)){ $('#view').innerHTML=`<p class="sub">${S.slow?'No se puede contactar con el servidor todavía. Comprueba la conexión; la página seguirá intentándolo.':'Cargando datos…'}</p>`; return; }
-  const demo=S.comunidades.some(k=>k.demo)&&ui.view!=='ajustes'?`<div class="notice info">Estás viendo <b>datos de ejemplo</b> con dos comunidades ficticias. Cuando quieras empezar con las tuyas, bórralos en <a href="#ajustes">Ajustes</a>.</div>`:'';
+  const demo=S.demo?`<div class="notice info"><b>Versión de demostración</b> con comunidades ficticias. Puedes tocar todo: los cambios se quedan solo en este navegador. <button class="btn link" data-act="resetDemo">Restablecer</button> · <button class="btn link" data-act="salirDemo">Usar con mis datos</button></div>`:S.comunidades.some(k=>k.demo)&&ui.view!=='ajustes'?`<div class="notice info">Estás viendo <b>datos de ejemplo</b> con dos comunidades ficticias. Cuando quieras empezar con las tuyas, bórralos en <a href="#ajustes">Ajustes</a>.</div>`:'';
   $('#view').innerHTML=demo+(VIEW_FN[ui.view]||vPanel)();
   $('.main').scrollTop=sy;
   applySearch();
@@ -479,12 +506,15 @@ function editForm(col,item,presets){
   const schema=SCHEMA[col]; const isNew=!item;
   const data={...defaults(schema),...(isNew&&ui.cid!=='all'?{cid:ui.cid}:{}),...(presets||{}),...(item||{})};
   const m=modal((isNew?'Nuevo ':'Editar ')+NOUN[col],`<div class="fg">${schema.map(f=>fieldHtml(f,data[f.k],data)).join('')}</div>`,[{l:'Cancelar'},{l:isNew?'Crear':'Guardar cambios',pri:1,fn:async(b,setErr)=>{
-    const o=readForm(schema,b); const err=validate(schema,o); if(err){ setErr(err); return false; }
+    const o=readForm(schema,b); if(BEFORE_SAVE[col]) BEFORE_SAVE[col](o,item); const err=validate(schema,o); if(err){ setErr(err); return false; }
     if(isNew){ o.creado=new Date().toISOString(); await retry(()=>store.add(col,o)); toast(cap(NOUN[col])+' creado'); }
     else { await retry(()=>store.update(col,item.id,o)); toast('Cambios guardados'); }
   }}]);
-  const cidSel=m.body.querySelector('#f_cid'), uSel=m.body.querySelector('#f_uid');
-  if(cidSel&&uSel){ const f=schema.find(x=>x.k==='uid'); cidSel.addEventListener('change',()=>{ uSel.innerHTML=unitOpts(cidSel.value,'',f.opt); }); }
+  const cidSel=m.body.querySelector('#f_cid');
+  if(cidSel) cidSel.addEventListener('change',()=>{ const cur={...readForm(schema,m.body),cid:cidSel.value};
+    for(const f of schema){ const el=m.body.querySelector('#f_'+f.k); if(!el||el===cidSel) continue;
+      if(f.t==='unit') el.innerHTML=unitOpts(cidSel.value,'',f.opt);
+      else if(FIELD_TYPES[f.t]&&FIELD_TYPES[f.t].dep){ const tmp=document.createElement('div'); tmp.innerHTML=FIELD_TYPES[f.t](f,'',cur,'f_'+f.k); el.replaceWith(tmp.firstElementChild); } } });
 }
 const ACTS={
   new:d=>editForm(d.col,null),
@@ -511,8 +541,9 @@ const ACTS={
   csvGastos:()=>{ const gs=S.gastos.filter(inCid).filter(g=>!ui.gasAnio||String(g.fecha).startsWith(ui.gasAnio)).sort((a,b)=>String(a.fecha).localeCompare(b.fecha)); const c=toCSV(['comunidad','fecha','proveedor','nif proveedor','concepto','categoria','importe','pagado','fondo reserva'],gs.map(g=>{const p=find('proveedores',g.provId)||{}; return [comName(g.cid),g.fecha,p.nombre,p.cif,g.concepto,g.categoria,num(g.importe),g.pagado?'si':'no',g.fondoReserva?'si':'no'];})); saveFile(`gastos_${slug(ui.cid==='all'?'todas':comName(ui.cid))}_${ui.gasAnio||'todos'}.csv`,c); },
   backup:()=>{ const data={}; COLS.forEach(c=>data[c]=S[c]); const j=JSON.stringify({app:'gestor-comunidades',version:1,exportado:new Date().toISOString(),config:S.config,data},null,1); saveFile(`copia_gestor_comunidades_${today()}.json`,j); },
   restore:()=>restore(),
+  instalar:async()=>{ if(window.GCInstall) await GCInstall.instalar(); },
   loadDemo:async()=>{ const demo=window.GC_DEMO; if(!demo) return; const items=COLS.flatMap(c=>(demo[c]||[]).map(x=>[c,x])); let i=0;
-    toast('Cargando datos de ejemplo…'); try{ for(const [c,{id,...o}] of items){ i++; await retry(()=>store.set(c,id,o)); } toast(`${i} registros de ejemplo cargados`); }catch(e){ toast(errMsg(e)); } },
+    toast('Cargando datos de ejemplo…'); try{ for(const [c,{id,...o}] of items){ i++; await retry(()=>store.set(c,id,o)); } if(demo.config&&!S.config.nombre) await retry(()=>store.set('config','despacho',{...demo.config,demo:true})); toast(`${i} registros de ejemplo cargados`); }catch(e){ toast(errMsg(e)); } },
   modoLocal:()=>{ lsSet('modo','local'); location.hash=''; location.reload(); },
   modoCloud:()=>{ lsSet('modo',''); location.reload(); },
   logout:async()=>{ if(sb) await sb.auth.signOut(); lsSet('despacho',''); location.reload(); },
@@ -553,9 +584,9 @@ function genRecibos(){
   const fill=()=>{ const k=com($('#g_cid',b).value); const tipo=$('#g_tipo',b).value;
     if(k){ const per=suggestPeriod(k.periodicidad); if(!touched.per) $('#g_per',b).value=per; const p=$('#g_per',b).value;
       if(!touched.con) $('#g_con',b).value=(tipo==='derrama'?'Derrama ':'Cuota ordinaria ')+p;
-      const cuota=r2(num(k.presupuestoAnual)/(PPY[k.periodicidad]||4));
+      const cuota=r2(presupuestoDe(k)/(PPY[k.periodicidad]||4));
       if(!touched.tot) $('#g_tot',b).value=tipo==='ordinaria'&&cuota?String(cuota).replace('.',','):'';
-      $('#g_hint',b).textContent=tipo==='ordinaria'?`Presupuesto ${eur(k.presupuestoAnual)} ÷ ${PPY[k.periodicidad]||4} (${k.periodicidad||'trimestral'})`:'Importe total aprobado en junta'; }
+      $('#g_hint',b).textContent=tipo==='ordinaria'?`Presupuesto ${eur(presupuestoDe(k))} ÷ ${PPY[k.periodicidad]||4} (${k.periodicidad||'trimestral'})`:'Importe total aprobado en junta'; }
     preview(); };
   $('#g_cid',b).addEventListener('change',fill); $('#g_tipo',b).addEventListener('change',()=>{ touched.tot=false; touched.con=false; fill(); });
   $('#g_per',b).addEventListener('input',()=>{ touched.per=true; if(!touched.con){ const t=$('#g_tipo',b).value; $('#g_con',b).value=(t==='derrama'?'Derrama ':'Cuota ordinaria ')+$('#g_per',b).value; } delete b.dataset.dupOk; });
@@ -581,12 +612,12 @@ function remesa(){
     const now=new Date(); const stamp=`${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const msgId=`REM-${stamp}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
     const xml=buildPain008({msgId,creDtTm:now.toISOString().slice(0,19),cdtrNm:k.nombre,cdtrIban:k.iban,cdtrBic:(k.bic||'').trim(),cdtrId:creditorId(k.cif,k.sepaSufijo),fecha,
-      items:ok.map(({r,u})=>({e2e:'R'+r.id,importe:num(r.importe),mandato:u.mandatoRef,mandatoFecha:u.mandatoFecha,nombre:u.propietario,iban:u.iban,concepto:`${k.nombre} ${u.ref} ${r.concepto}`}))});
+      items:ok.map(({r,u})=>({e2e:e2eRecibo(r.id),importe:num(r.importe),mandato:u.mandatoRef,mandatoFecha:u.mandatoFecha,nombre:u.propietario,iban:u.iban,concepto:`${k.nombre} ${u.ref} ${r.concepto}`}))});
     const name=`remesa_${slug(k.nombre)}_${fecha}`; let saved;
     saved=saveFile(name+'.xml',xml);
     if(!saved) return setErr('No se ha descargado la remesa.'),false;
-    if($('#s_mark',b).checked){ let i=0; for(const {r} of ok){ i++; setErr(`Marcando ${i} de ${ok.length}…`,true); await retry(()=>store.update('recibos',r.id,{estado:'cobrado',fechaCobro:fecha,remesa:msgId})); } }
-    else { for(const {r} of ok) await retry(()=>store.update('recibos',r.id,{remesa:msgId})); }
+    if($('#s_mark',b).checked){ let i=0; for(const {r} of ok){ i++; setErr(`Marcando ${i} de ${ok.length}…`,true); await retry(()=>store.update('recibos',r.id,{estado:'cobrado',fechaCobro:fecha,remesa:msgId,e2e:e2eRecibo(r.id)})); } }
+    else { for(const {r} of ok) await retry(()=>store.update('recibos',r.id,{remesa:msgId,e2e:e2eRecibo(r.id)})); }
     toast(`Remesa de ${ok.length} recibos (${eur(sum(ok.map(x=>x.r.importe)))}) generada`);
   }}],{wide:1});
   const b=m.body;
@@ -642,5 +673,3 @@ function restore(){
       toast(`${n} registros restaurados`); }}]);
   $('#r_file',m.body).addEventListener('change',async e=>{ const f=e.target.files[0]; if(!f) return; try{ const j=JSON.parse(await f.text()); if(j.app!=='gestor-comunidades'||!j.data) throw new Error(); data=j; $('#r_prev',m.body).innerHTML=`<p style="margin:0">Copia del ${esc(fd(String(j.exportado||'').slice(0,10)))}: ${COLS.map(c=>`${(j.data[c]||[]).length} ${c}`).join(', ')}.</p>`; m.setErr(''); }catch(err){ data=null; m.setErr('Este archivo no es una copia del Gestor de Comunidades.'); } });
 }
-
-boot();

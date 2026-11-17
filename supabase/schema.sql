@@ -33,13 +33,22 @@ create index if not exists miembros_user_idx on public.miembros(user_id);
 
 create table if not exists public.docs (
   despacho_id uuid not null references public.despachos(id) on delete cascade,
-  col         text not null check (col in ('comunidades','unidades','recibos','gastos','proveedores','juntas','incidencias','config')),
+  col         text not null,
   id          text not null check (length(id) between 1 and 100),
   data        jsonb not null default '{}'::jsonb check (pg_column_size(data) < 262144),
   updated_at  timestamptz not null default now(),
   updated_by  uuid default auth.uid(),
   primary key (despacho_id, col, id)
 );
+
+-- Colecciones permitidas (se puede volver a ejecutar para añadir nuevas).
+alter table public.docs drop constraint if exists docs_col_check;
+alter table public.docs add constraint docs_col_check check (col in (
+  'comunidades','unidades','recibos','gastos','proveedores','juntas','incidencias','config',
+  'ingresos','movimientos','facturas','solicitudes'));
+create index if not exists docs_token_alta_idx on public.docs ((data->>'tokenAlta')) where col = 'comunidades';
+create index if not exists docs_email_idx on public.docs (lower(data->>'email')) where col = 'unidades';
+create index if not exists docs_cid_idx on public.docs (despacho_id, col, (data->>'cid'));
 
 create table if not exists public.historial (
   n           bigserial primary key,
@@ -181,6 +190,112 @@ grant execute on function public.miembros_despacho(uuid)           to authentica
 grant execute on function public.invitar_miembro(uuid, text, text) to authenticated;
 grant execute on function public.quitar_miembro(uuid, uuid)        to authenticated;
 grant execute on function public.rol_en(uuid)                      to authenticated;
+
+-- =====================================================================
+-- Recogida de datos de contacto de propietarios (formulario público con QR)
+-- Cada comunidad tiene un token secreto (data.tokenAlta) que va en el enlace/QR del portal.
+-- =====================================================================
+
+-- Datos mínimos para pintar el formulario: nombre de la comunidad y lista de pisos.
+create or replace function public.alta_info(p_token text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare c record;
+begin
+  if p_token is null or length(p_token) < 16 then return null; end if;
+  select d.despacho_id, d.id, d.data into c from public.docs d where d.col = 'comunidades' and d.data->>'tokenAlta' = p_token limit 1;
+  if not found then return null; end if;
+  return jsonb_build_object(
+    'comunidad', c.data->>'nombre',
+    'direccion', concat_ws(', ', c.data->>'direccion', c.data->>'ciudad'),
+    'despacho', (select nombre from public.despachos where id = c.despacho_id),
+    'pisos', coalesce((select jsonb_agg(u.data->>'ref' order by u.data->>'ref') from public.docs u
+                       where u.despacho_id = c.despacho_id and u.col = 'unidades' and u.data->>'cid' = c.id), '[]'::jsonb));
+end $$;
+
+-- Guarda una solicitud de alta que el administrador revisará. No modifica ningún piso.
+create or replace function public.alta_propietario(p_token text, p_piso text, p_nombre text, p_email text, p_telefono text, p_rol text, p_consentimiento boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare c record;
+begin
+  select d.despacho_id, d.id into c from public.docs d where d.col = 'comunidades' and d.data->>'tokenAlta' = p_token and length(p_token) >= 16 limit 1;
+  if not found then raise exception 'Enlace no válido o caducado'; end if;
+  if coalesce(p_consentimiento, false) is not true then raise exception 'Hace falta el consentimiento para recibir notificaciones por email'; end if;
+  if p_email !~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' or length(p_email) > 200 then raise exception 'Email no válido'; end if;
+  if length(coalesce(trim(p_piso), '')) = 0 or length(p_piso) > 40 or length(coalesce(trim(p_nombre), '')) = 0 or length(p_nombre) > 120 or length(coalesce(p_telefono, '')) > 30 then
+    raise exception 'Revisa el piso, el nombre y el teléfono';
+  end if;
+  if (select count(*) from public.docs where despacho_id = c.despacho_id and col = 'solicitudes' and data->>'cid' = c.id and data->>'estado' = 'pendiente') >= 300 then
+    raise exception 'Hay demasiadas solicitudes pendientes en esta comunidad. Avisa a tu administrador.';
+  end if;
+  insert into public.docs (despacho_id, col, id, data) values (c.despacho_id, 'solicitudes', gen_random_uuid()::text, jsonb_build_object(
+    'cid', c.id, 'piso', trim(p_piso), 'nombre', trim(p_nombre), 'email', lower(trim(p_email)), 'telefono', trim(coalesce(p_telefono, '')),
+    'rol', case when p_rol = 'inquilino' then 'inquilino' else 'propietario' end,
+    'consentimiento', true, 'fecha', to_char(now() at time zone 'Europe/Madrid', 'YYYY-MM-DD"T"HH24:MI'), 'estado', 'pendiente'));
+end $$;
+
+-- =====================================================================
+-- Portal del propietario: quien entra con el email registrado en un piso ve sus datos.
+-- =====================================================================
+create or replace function public.mi_email() returns text
+language sql stable security definer set search_path = public as $$
+  select lower(email) from auth.users where id = auth.uid()
+$$;
+
+create or replace function public.portal_resumen() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare e text := public.mi_email();
+begin
+  if e is null then return '[]'::jsonb; end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'despacho_id', u.despacho_id, 'despacho', (select nombre from public.despachos where id = u.despacho_id),
+      'administrador', (select data->'nombre' from public.docs where despacho_id = u.despacho_id and col = 'config' and id = 'despacho'),
+      'contacto', (select jsonb_build_object('email', data->'email', 'telefono', data->'telefono') from public.docs where despacho_id = u.despacho_id and col = 'config' and id = 'despacho'),
+      'uid', u.id,
+      'piso', jsonb_build_object('ref', u.data->'ref', 'tipo', u.data->'tipo', 'coef', u.data->'coef', 'propietario', u.data->'propietario', 'domiciliado', u.data->'domiciliado'),
+      'comunidad', (select jsonb_build_object('nombre', c.data->'nombre', 'direccion', c.data->'direccion', 'ciudad', c.data->'ciudad', 'presidente', c.data->'presidente', 'iban', c.data->'iban')
+                    from public.docs c where c.despacho_id = u.despacho_id and c.col = 'comunidades' and c.id = u.data->>'cid'),
+      'recibos', coalesce((select jsonb_agg(jsonb_build_object('periodo', r.data->'periodo', 'concepto', r.data->'concepto', 'importe', r.data->'importe',
+                    'estado', r.data->'estado', 'vencimiento', r.data->'vencimiento', 'fechaCobro', r.data->'fechaCobro') order by r.data->>'emision' desc)
+                  from public.docs r where r.despacho_id = u.despacho_id and r.col = 'recibos' and r.data->>'uid' = u.id), '[]'::jsonb),
+      'juntas', coalesce((select jsonb_agg(jsonb_build_object('fecha', j.data->'fecha', 'tipo', j.data->'tipo', 'hora1', j.data->'hora1', 'hora2', j.data->'hora2',
+                    'lugar', j.data->'lugar', 'orden', j.data->'orden', 'estado', j.data->'estado',
+                    'acuerdos', case when j.data->>'estado' = 'celebrada' then j.data->'acuerdos' end) order by j.data->>'fecha' desc)
+                  from public.docs j where j.despacho_id = u.despacho_id and j.col = 'juntas' and j.data->>'cid' = u.data->>'cid'), '[]'::jsonb),
+      'incidencias', coalesce((select jsonb_agg(jsonb_build_object('fecha', i.data->'fecha', 'titulo', i.data->'titulo', 'estado', i.data->'estado') order by i.data->>'fecha' desc)
+                  from public.docs i where i.despacho_id = u.despacho_id and i.col = 'incidencias' and (i.data->>'uid' = u.id or i.data->>'reportadaPor' = e)), '[]'::jsonb)
+    ))
+    from public.docs u where u.col = 'unidades' and (lower(u.data->>'email') = e or lower(u.data->>'inquilinoEmail') = e)
+  ), '[]'::jsonb);
+end $$;
+
+-- El propietario comunica una incidencia de su comunidad desde el portal.
+create or replace function public.portal_incidencia(p_despacho uuid, p_uid text, p_titulo text, p_descripcion text) returns void
+language plpgsql security definer set search_path = public as $$
+declare e text := public.mi_email(); u record;
+begin
+  select * into u from public.docs where despacho_id = p_despacho and col = 'unidades' and id = p_uid
+    and (lower(data->>'email') = e or lower(data->>'inquilinoEmail') = e);
+  if not found then raise exception 'No tienes acceso a este piso'; end if;
+  if length(coalesce(trim(p_titulo), '')) = 0 or length(p_titulo) > 200 or length(coalesce(p_descripcion, '')) > 3000 then raise exception 'Revisa el texto de la incidencia'; end if;
+  if (select count(*) from public.docs where despacho_id = p_despacho and col = 'incidencias' and data->>'reportadaPor' = e and data->>'estado' <> 'cerrada') >= 20 then
+    raise exception 'Tienes muchas incidencias abiertas. Espera a que se resuelvan o llama al administrador.';
+  end if;
+  insert into public.docs (despacho_id, col, id, data) values (p_despacho, 'incidencias', gen_random_uuid()::text, jsonb_build_object(
+    'cid', u.data->>'cid', 'uid', p_uid, 'fecha', to_char(now() at time zone 'Europe/Madrid', 'YYYY-MM-DD'), 'titulo', trim(p_titulo),
+    'descripcion', coalesce(p_descripcion, ''), 'provId', '', 'prioridad', 'media', 'estado', 'abierta', 'origen', 'portal', 'reportadaPor', e));
+end $$;
+
+revoke all on function public.alta_info(text) from public;
+revoke all on function public.alta_propietario(text, text, text, text, text, text, boolean) from public;
+revoke all on function public.mi_email() from public, anon;
+revoke all on function public.portal_resumen() from public, anon;
+revoke all on function public.portal_incidencia(uuid, text, text, text) from public, anon;
+grant execute on function public.alta_info(text) to anon, authenticated;
+grant execute on function public.alta_propietario(text, text, text, text, text, text, boolean) to anon, authenticated;
+grant execute on function public.mi_email() to authenticated;
+grant execute on function public.portal_resumen() to authenticated;
+grant execute on function public.portal_incidencia(uuid, text, text, text) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- Tiempo real: la aplicación recibe al momento los cambios de otros miembros.

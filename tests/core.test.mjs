@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { DOMParser } from '@xmldom/xmldom';
 const GC = createRequire(import.meta.url)('../js/core.js');
 
 test('IBAN: valida dígitos de control', () => {
@@ -64,4 +65,46 @@ test('Remesa SEPA pain.008: totales, juego de caracteres y escapes', () => {
   assert.ok(!xml.includes('&'), 'los caracteres fuera de SEPA se sustituyen');
   mkdirSync('tests/out', { recursive: true });
   writeFileSync('tests/out/remesa.xml', xml); // CI la valida contra el XSD oficial
+});
+
+test('Repartos especiales: exentos y presupuesto por partidas', () => {
+  const us = [
+    { ref: 'Bajo', coef: 20, coefs: { asc: 0, gar: 0 } },
+    { ref: '1º', coef: 40, coefs: { asc: 50, gar: 1 } },
+    { ref: '2º', coef: 40, coefs: { asc: 50 } }
+  ];
+  assert.equal(GC.coefOf(us[0], 'general'), 20);
+  assert.equal(GC.coefOf(us[2], 'gar'), 0);
+  const asc = GC.splitByCoef(us, 100, 'asc');
+  assert.deepEqual(asc.map(x => [x.u.ref, x.imp]), [['1º', 50], ['2º', 50]]); // el bajo no paga ascensor
+  const partidas = [{ importe: 4000, reparto: 'general' }, { importe: 1200, reparto: 'asc' }, { importe: 400, reparto: 'gar' }];
+  const c = GC.cuotaPresupuesto(us, partidas, 4);
+  assert.deepEqual(c.map(x => x.imp), [200, 650, 550]);   // 1000·coef + 300 ascensor + 100 garaje
+  assert.equal(GC.sum(c.map(x => x.imp)), (4000 + 1200 + 400) / 4);
+  assert.deepEqual(c[1].desglose, { general: 400, asc: 150, gar: 100 });
+});
+
+test('Extracto Norma 43: cabecera, movimientos, conceptos y saldo final', () => {
+  const txt = readFileSync(new URL('../ejemplos/extracto_alameda14_noviembre.n43', import.meta.url), 'utf8');
+  const [c] = GC.parseNorma43(txt);
+  assert.equal(c.banco + c.oficina + c.cuenta, '210004180200051332');
+  assert.equal(c.saldoInicial, 9596);
+  assert.equal(c.movimientos.length, 6);
+  assert.deepEqual([c.movimientos[0].fecha, c.movimientos[0].importe], ['2026-11-03', 650]);
+  assert.equal(c.movimientos[4].importe, -12.1);
+  assert.equal(c.movimientos[1].concepto, 'RECIBO LIMPIEZAS BRILLO SL');
+  assert.equal(c.saldoFinal, GC.r2(9596 + 650 + 396 - 290 - 385 - 12.1 - 1180));
+});
+
+test('Devoluciones SEPA pain.002', () => {
+  const xml = readFileSync(new URL('../ejemplos/devoluciones_ejemplo.xml', import.meta.url), 'utf8');
+  const r = GC.parsePain002(xml, DOMParser);
+  assert.deepEqual(r, [{ e2e: 'Rdemo-r-demo-c1-2026-T4-5', estado: 'RJCT', motivo: 'AM04', motivoTexto: 'Fondos insuficientes', importe: 432 }]);
+  assert.equal(GC.e2eRecibo('demo-r-demo-c1-2026-T4-5'), 'Rdemo-r-demo-c1-2026-T4-5');
+  assert.ok(GC.e2eRecibo('0f8fad5b-d9cb-469f-a165-70867728950e').length <= 35);
+});
+
+test('Conciliación: parecido entre concepto bancario y nombre', () => {
+  assert.equal(GC.parecido('TRANSF DE ELENA NAVARRO RUIZ CUOTA 2B', 'Elena Navarro Ruiz'), 1);
+  assert.equal(GC.parecido('RECIBO LIMPIEZAS BRILLO SL', 'Fontanería Ramos'), 0);
 });

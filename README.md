@@ -1,80 +1,101 @@
 # Gestor de Comunidades
 
-Software web para **administradores de fincas**: comunidades de propietarios, recibos por coeficiente, remesas SEPA, juntas, actas y certificados de deuda. Funciona en el navegador; no hay que instalar nada.
+Software para **administradores de fincas**: comunidades de propietarios, presupuestos con repartos especiales, recibos y remesas SEPA, banco, cuentas anuales, juntas y actas, honorarios, impuestos y portal del propietario. Funciona en el navegador y se instala como aplicación en el móvil y en el ordenador.
 
-**Pruébalo:** https://lucaniz.github.io/gestor-comunidades/ → *Probar sin registrarte* → *Probar con datos de ejemplo*.
+- **Demostración con datos ficticios:** https://lucaniz.github.io/gestor-comunidades/?demo
+- **Aplicación:** https://lucaniz.github.io/gestor-comunidades/
 
 ## Qué hace
 
 | Área | Funciones |
 |---|---|
-| Panel del despacho | Todas las comunidades de un vistazo: saldo, pendiente de cobro, morosos, incidencias, próxima junta, honorarios. Avisos automáticos (sin junta ordinaria este año, coeficientes que no suman 100 %, falta IBAN o CIF). |
-| Comunidades | Datos fiscales, IBAN, presupuesto, periodicidad de cuotas, fondo de reserva (mín. 10 %, art. 9.1.f LPH), identificador de acreedor SEPA calculado del CIF. |
-| Propietarios | Pisos y locales con coeficiente, titular, contacto, inquilino, IBAN y mandato SEPA. Importación y exportación CSV. |
-| Recibos | Generación por coeficiente (cuotas ordinarias y derramas) con reparto exacto al céntimo. Cobrados, pendientes, devueltos. |
+| Panel | Todas las comunidades de un vistazo: saldo, pendiente de cobro, morosos, incidencias, próxima junta, honorarios. Avisos automáticos (sin junta ordinaria este año, coeficientes que no suman 100 %, falta IBAN o CIF, vecinos que han dejado sus datos). |
+| Comunidades | Datos fiscales, IBAN, periodicidad de cuotas, fondo de reserva (mín. 10 %, art. 9.1.f LPH), identificador de acreedor SEPA calculado del CIF. |
+| Propietarios | Pisos y locales, titular, inquilino, contacto, IBAN y mandato SEPA. Importación y exportación CSV. |
+| Presupuesto y repartos | Partidas del presupuesto, cada una con su reparto: general (coeficiente de la escritura) o especiales (escalera, garaje, ascensor sin bajos…), con exentos. Tabla de coeficientes editable y cuota de cada piso desglosada. Documento de presupuesto para la junta. |
+| Recibos | Cuotas según el presupuesto por partidas, derramas y otros cargos con el reparto elegido, al céntimo. Cobrados, pendientes, devueltos. |
 | Remesa SEPA | Fichero **pain.008.001.02** (CORE) para el banco. Deja fuera, con el motivo, los pisos sin mandato o con IBAN incorrecto. Validado contra el XSD oficial en cada cambio del código. |
+| Banco | Importa el extracto en **Norma 43** o CSV y las **devoluciones SEPA** (pain.002, con el motivo). Propone con qué remesa, recibo, factura o ingreso cuadra cada movimiento y concilia automáticamente las coincidencias claras. |
+| Gastos e ingresos | Facturas por comunidad, proveedor y partida, cargos al fondo de reserva, retenciones a profesionales. Otros ingresos: alquiler de la portería o la azotea, intereses, subvenciones. |
+| Cuentas anuales | Liquidación del ejercicio: tesorería, gastos por partida frente al presupuesto con desviación, deudas a 31/12, fondo de reserva. Documento para la junta y estado de cuentas por propietario. |
 | Juntas | Convocatoria con la relación de morosos (art. 16.2 LPH), advertencia de privación de voto (art. 15.2) y hoja de delegación. Acta (art. 19). Aviso si una ordinaria se convoca con menos de 6 días. |
 | Certificados | Certificado de deuda o de estar al corriente para compraventas (art. 9.1.e LPH). |
-| Gastos | Facturas por comunidad y proveedor, pagos pendientes, cargos al fondo de reserva, informe para el modelo 347. |
-| Incidencias | Averías con prioridad, piso afectado, proveedor asignado y estado. |
-| Equipo | Varios usuarios por despacho con rol de administrador, editor o solo lectura. Historial de todos los cambios. |
+| Honorarios | Facturas del despacho a cada comunidad con IVA y retención, numeración automática; registra el gasto en la comunidad. IVA repercutido y retenciones del trimestre. |
+| Impuestos | Ayuda para los modelos 111/190 (retenciones a profesionales), 184 (rentas de la comunidad, reparto por comunero) y 347. |
+| Comunicaciones | Convocatorias, actas, recordatorios de deuda y avisos a todos los propietarios, solo a los morosos o a uno, desde tu programa de correo. |
+| Recogida de emails | Enlace y **cartel con QR** para el portal: cada vecino deja su piso, email, teléfono y su consentimiento para recibir las comunicaciones por email. Tú revisas y aceptas cada respuesta. |
+| Portal del propietario | El propietario entra con el email registrado en su piso: ve sus recibos, la próxima junta y los acuerdos, y comunica incidencias. |
+| Incidencias y proveedores | Averías con prioridad, piso, proveedor y estado. Proveedores compartidos entre comunidades. |
+| Equipo | Varios usuarios por despacho (administrador, editor, solo lectura). Historial de todos los cambios en la base de datos. |
 | Copias | Copia de seguridad completa en JSON y restauración. |
 
-## Dos formas de usarlo
+## Instalar en el móvil o en el ordenador
 
-**Modo prueba (sin cuenta).** Los datos se guardan solo en el navegador de quien lo usa. Sirve para probar; para trabajar de verdad, usa el modo con cuenta.
+- **Android / Chrome / Edge:** abre la aplicación y pulsa **Instalar** (en Ajustes, en la barra lateral o en el menú del navegador).
+- **iPhone / iPad:** ábrela en Safari → **Compartir** → **Añadir a pantalla de inicio**.
 
-**Modo con cuenta (Supabase).** Cada administrador entra con su email (enlace mágico, sin contraseña), crea su **despacho** y solo ve sus datos. La separación la garantiza la propia base de datos (Row Level Security), no la aplicación.
+Queda con su icono, se abre en su propia ventana y las mejoras llegan solas.
+
+## Formas de usarlo
+
+- **Demostración** (`?demo`): datos ficticios de todos los módulos, separados de cualquier otro dato.
+- **Modo prueba:** sin cuenta, los datos se quedan solo en ese navegador.
+- **Modo con cuenta (Supabase):** cada administrador entra con su email y un código, crea su **despacho** y solo ve sus datos. La separación la garantiza la base de datos (Row Level Security). Es el modo para trabajar de verdad, y el que necesitan el portal del propietario y la recogida de emails.
 
 ## Poner en marcha el modo con cuenta (una vez, ~15 minutos)
 
 1. Crea un proyecto gratuito en [supabase.com](https://supabase.com). Elige una región de la UE (Frankfurt, París o Irlanda).
-2. **SQL Editor → New query**, pega el contenido de [`supabase/schema.sql`](supabase/schema.sql) y pulsa **Run**.
-3. **Authentication → URL Configuration**:
-   - *Site URL*: `https://lucaniz.github.io/gestor-comunidades/`
-   - *Redirect URLs*: añade la misma dirección.
-4. **Project Settings → API**: copia *Project URL* y la clave *anon public* en [`config.js`](config.js). La clave *anon* es pública por diseño. **Nunca** pongas la clave *service_role*.
-5. Para uso diario, configura un servidor de correo propio en **Authentication → SMTP Settings**: el correo incluido en Supabase solo envía unos pocos emails por hora.
+2. **SQL Editor → New query**: pega [`supabase/schema.sql`](supabase/schema.sql) y pulsa **Run**. Cuando actualices la aplicación, vuelve a ejecutarlo: no borra nada.
+3. **Authentication → URL Configuration**: *Site URL* y *Redirect URLs* = `https://lucaniz.github.io/gestor-comunidades/`.
+4. **Authentication → Email Templates**: en *Magic Link* y en *Confirm signup* añade la línea `Tu código de acceso: {{ .Token }}`. En la aplicación instalada se entra escribiendo ese código.
+5. **Project Settings → API**: copia *Project URL* y la clave *anon public* en [`config.js`](config.js). La clave *anon* es pública por diseño. **Nunca** pongas la clave *service_role*.
+6. Para el día a día, configura un servidor de correo propio en **Authentication → SMTP Settings**: el correo incluido en Supabase solo envía unos pocos emails por hora.
 
-## Dar acceso a otro administrador de fincas
+## Dar acceso a otros administradores
 
-No hay que instalar nada ni copiar el repositorio:
+No hay que instalar nada ni copiar el repositorio. Cada administrador:
 
-1. Abre la dirección de la aplicación.
-2. Escribe tu email y abre el enlace que llega al correo.
-3. Pulsa **Crear despacho**. A partir de ahí trabaja con sus propias comunidades, invisibles para los demás despachos.
+1. Abre la aplicación (o la instala).
+2. Escribe su email e introduce el código que recibe.
+3. Pulsa **Crear despacho**. Desde ese momento trabaja con sus propias comunidades, invisibles para los demás.
 
-Para que alguien trabaje **en tu mismo despacho** (un empleado, un socio): tiene que entrar una vez con su email; después tú, desde **Ajustes → Equipo → Añadir persona**, le das el rol que corresponda.
+Para que alguien trabaje **en tu mismo despacho** (un empleado, un socio): tiene que entrar una vez con su email; después tú lo añades en **Ajustes → Equipo**.
+
+Los **propietarios** entran igual, con el email que figure en su piso, y ven directamente su portal.
 
 ## Pasar datos desde la versión de Claude
 
 En la versión anterior: **Ajustes → Descargar copia**. En esta: **Ajustes → Restaurar copia** con ese archivo.
 
+## Ficheros de ejemplo
+
+En [`ejemplos/`](ejemplos/) hay un extracto Norma 43, un fichero de devoluciones SEPA y la plantilla CSV de pisos, para probar las importaciones en la demostración.
+
 ## Desarrollo
 
-Es HTML, CSS y JavaScript sin compilación. Para verlo en local basta con abrir `index.html` en el navegador.
+HTML, CSS y JavaScript sin compilación. Para verlo en local basta con abrir `index.html` (añade `?demo` para la demostración).
 
 ```
-index.html            página
+index.html, manifest.webmanifest, sw.js   página y aplicación instalable
 config.js             conexión a Supabase (vacío = modo prueba)
 css/app.css           estilos
-js/core.js            lógica pura: reparto, IBAN, SEPA, CSV (con tests)
+js/core.js            lógica pura con tests: repartos, IBAN, SEPA, Norma 43, devoluciones, CSV
 js/store.js           almacenamiento: navegador o Supabase
-js/app.js             interfaz
-js/demo.js            datos de ejemplo ficticios
-supabase/schema.sql   tablas, reglas de acceso, historial y funciones
+js/app.js             interfaz principal
+js/finanzas.js        presupuesto, banco, cuentas, honorarios, impuestos
+js/portal.js          comunicaciones, recogida de emails, portal del propietario, demostración
+js/demo.js            datos ficticios (se generan con `npm run demo`)
+supabase/schema.sql   tablas, reglas de acceso, historial y funciones del portal
 tests/                tests de la lógica y validación SEPA
 ```
 
-Tests: `node --test tests/*.test.mjs`. GitHub Actions los ejecuta en cada cambio y valida la remesa generada contra el esquema `pain.008.001.02`. Cada cambio en `main` se publica solo en GitHub Pages.
+`npm install && npm test` ejecuta los tests. GitHub Actions los pasa en cada cambio, valida la remesa contra el esquema `pain.008.001.02` y publica `main` en GitHub Pages.
 
-## Límites conocidos y siguientes pasos
+## Límites conocidos
 
-- **Contabilidad:** el saldo es una estimación (saldo inicial + cobros − pagos). Faltan la liquidación anual por partidas y las cuentas para la junta.
-- **Repartos:** un solo coeficiente por piso. Faltan los repartos por escalera, garaje, ascensor o locales exentos.
-- **Banco:** falta importar el extracto (Norma 43) y las devoluciones de recibos.
-- **Envíos:** no se envían todavía recibos, convocatorias ni actas por email.
-- **Portal del propietario** y **facturación de honorarios**: pendientes.
+- Los emails se envían desde tu programa de correo; no hay envío automático desde el servidor.
+- El saldo y las cuentas se calculan con cobros y pagos registrados (criterio de caja). Para la contabilidad oficial por partida doble, usa tu programa o tu asesor.
+- Los modelos fiscales son una ayuda para prepararlos; revísalos siempre antes de presentarlos.
 
 ## Aviso
 

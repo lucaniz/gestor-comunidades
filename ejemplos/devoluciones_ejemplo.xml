@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.002.001.03">
+  <CstmrPmtStsRpt>
+    <GrpHdr><MsgId>DEV-20261015-0001</MsgId><CreDtTm>2026-10-15T09:00:00</CreDtTm></GrpHdr>
+    <OrgnlGrpInfAndSts><OrgnlMsgId>REM-20261003-DEMO</OrgnlMsgId><OrgnlMsgNmId>pain.008.001.02</OrgnlMsgNmId><GrpSts>PART</GrpSts></OrgnlGrpInfAndSts>
+    <OrgnlPmtInfAndSts>
+      <OrgnlPmtInfId>REM-20261003-DEMO-1</OrgnlPmtInfId>
+      <TxInfAndSts>
+        <StsId>1</StsId><OrgnlEndToEndId>Rdemo-r-demo-c1-2026-T4-5</OrgnlEndToEndId><TxSts>RJCT</TxSts>
+        <StsRsnInf><Rsn><Cd>AM04</Cd></Rsn></StsRsnInf>
+        <OrgnlTxRef><Amt><InstdAmt Ccy="EUR">432.00</InstdAmt></Amt></OrgnlTxRef>
+      </TxInfAndSts>
+    </OrgnlPmtInfAndSts>
+  </CstmrPmtStsRpt>
+</Document>

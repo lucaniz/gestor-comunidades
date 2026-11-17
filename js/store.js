@@ -23,8 +23,8 @@
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2));
 
   /* ---------------- Navegador ---------------- */
-  function local(cols) {
-    const KEY = 'gc_local_v1';
+  function local(cols, key) {
+    const KEY = key || 'gc_local_v1';
     const { cache, subs, rows, emit } = makeCache(cols);
     try {
       const raw = JSON.parse(localStorage.getItem(KEY) || '{}');

@@ -1,0 +1,21 @@
+{
+  "name": "Gestor de Comunidades",
+  "short_name": "Comunidades",
+  "description": "Gestión de comunidades de propietarios para administradores de fincas.",
+  "lang": "es-ES",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f5f5",
+  "theme_color": "#0e2e33",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Recibos y cobros", "url": "./#recibos" },
+    { "name": "Incidencias", "url": "./#incidencias" }
+  ]
+}
