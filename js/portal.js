@@ -183,6 +183,6 @@ Object.assign(ACTS, {
 window.GC_DEMO_MODE = new URLSearchParams(location.search).has('demo');
 Object.assign(ACTS, {
   resetDemo: async () => { if (!await confirmBox('¿Volver a los datos de ejemplo iniciales? Se pierden los cambios hechos en la demostración.', 'Restablecer')) return;
-    try { localStorage.removeItem('gc_demo_v1'); } catch (e) {} location.reload(); },
+    try { localStorage.removeItem(demoKey()); } catch (e) {} location.reload(); },
   salirDemo: () => { location.href = appUrl(); }
 });

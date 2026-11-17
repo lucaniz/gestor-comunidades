@@ -19,12 +19,14 @@ let store=null, sb=null;
 const CFG=window.GC_CONFIG||{};
 const cloudConfigured=()=>!!(CFG.supabaseUrl&&CFG.supabaseAnonKey);
 
+// La demostración se guarda aparte y se renueva sola cuando cambian los datos de ejemplo.
+function demoKey(){ return 'gc_demo_'+JSON.stringify(window.GC_DEMO||{}).length.toString(36); }
 async function boot(){
   route();
   const params=new URLSearchParams(location.search);
   if(params.get('alta')&&window.bootAlta) return bootAlta(params.get('alta'));
   try{
-    if(window.GC_DEMO_MODE){ S.mode='local'; S.demo=true; store=GCStore.local(COLS,'gc_demo_v1'); }
+    if(window.GC_DEMO_MODE){ S.mode='local'; S.demo=true; store=GCStore.local(COLS,demoKey()); }
     else if(cloudConfigured()&&lsGet('modo')!=='local'){
       if(!window.supabase){ S.mode='error'; S.error='No se ha podido cargar la librería de Supabase. Comprueba la conexión a internet.'; return render(); }
       sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey);
