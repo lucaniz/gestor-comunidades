@@ -3,7 +3,7 @@
  * Estrategia: red primero para la aplicación (las mejoras llegan al momento) y copia local si no hay red.
  * Nunca guarda en caché los datos (Supabase): solo los archivos de la aplicación.
  */
-const VERSION = 'gc-v4';
+const VERSION = 'gc-v5';
 const APP = ['./', './index.html', './config.js', './manifest.webmanifest', './css/app.css',
   './js/core.js', './js/store.js', './js/demo.js', './js/app.js', './js/finanzas.js', './js/portal.js', './js/correo.js', './js/pwa.js',
   './icons/icon-192.png', './icons/icon-512.png'];

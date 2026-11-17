@@ -51,7 +51,8 @@ async function boot(){
   if(S.demo) setTimeout(async()=>{ if(!S.comunidades.length){ let n=0; try{ for(const c of COLS) for(const {id,...o} of ((window.GC_DEMO||{})[c]||[])){ await store.set(c,id,o); n++; } if(window.GC_DEMO.config&&!S.config.nombre) await store.set('config','despacho',window.GC_DEMO.config); }catch(e){ console.warn(e); } if(n) toast('Demostración con datos ficticios'); } },50);
 }
 const allLoaded=()=>COLS.every(c=>S.loaded[c]);
-let _raf=0; function schedule(){ if(_raf) return; _raf=requestAnimationFrame(()=>{_raf=0; render();}); }
+// Agrupa los repintados; en segundo plano requestAnimationFrame se detiene, así que se usa un temporizador.
+let _raf=0; function schedule(){ if(_raf) return; const run=()=>{_raf=0; render();}; _raf=document.hidden?setTimeout(run,30):requestAnimationFrame(run); }
 function errMsg(e){ const c=e&&e.code;
   if(c==='invalid_argument') return (e&&e.message)||'No se ha podido guardar: no tienes permiso o el dato no es válido.';
   if(c==='quota_exceeded') return (e&&e.message)||'No queda espacio para guardar más datos.';
