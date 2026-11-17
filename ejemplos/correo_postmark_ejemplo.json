@@ -1,0 +1,14 @@
+{
+  "FromName": "Elena Navarro Ruiz",
+  "From": "elena@ejemplo.es",
+  "FromFull": { "Email": "Elena@Ejemplo.es", "Name": "Elena Navarro Ruiz" },
+  "To": "a1b2c3d4@inbound.postmarkapp.com",
+  "OriginalRecipient": "comunidades@ejemplo.es",
+  "Subject": "Cuotas pendientes del 2º B",
+  "MessageID": "73e6d360-66eb-11e1-8e72-a8904824019b",
+  "Date": "Fri, 14 Nov 2026 09:12:00 +0100",
+  "TextBody": "Buenos días:\n\nEsta semana hago una transferencia por las dos cuotas.\n\nGracias,\nElena",
+  "HtmlBody": "<p>Buenos días:</p><p>Esta semana hago una transferencia por las dos cuotas.</p>",
+  "StrippedTextReply": "",
+  "Attachments": [{ "Name": "justificante.pdf", "ContentType": "application/pdf", "ContentLength": 48213, "Content": "JVBERi0xLjQK" }]
+}

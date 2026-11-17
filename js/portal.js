@@ -33,13 +33,14 @@ function comunicar({ cid, asunto = '', cuerpo = '', soloUid = null, filtro = 'to
   const lista = b => { const k = com($('#cm_cid', b).value); if (!k) return []; const d = $('#cm_dest', b).value; const us = unitsOf(k.id);
     const sel = d === 'uno' ? us.filter(u => u.id === soloUid) : d === 'morosos' ? us.filter(u => D.debt[u.id] > 0) : us;
     const out = []; sel.forEach(u => { if (u.email) out.push({ u, email: u.email }); if (d === 'inquilinos' && u.inquilinoEmail) out.push({ u, email: u.inquilinoEmail }); }); return { sel, out }; };
-  const texto = b => $('#cm_cu', b).value + ($('#cm_portal', b) && $('#cm_portal', b).checked ? `\n\nConsulte sus recibos y las convocatorias en el portal del propietario: ${appUrl()} (entre con este mismo email).` : '');
+  const texto = b => $('#cm_cu', b).value + ($('#cm_portal', b) && $('#cm_portal', b).checked ? `\n\nConsulte sus recibos y las convocatorias en el portal del propietario: ${appUrl()} (entre con este mismo email).` : '') + (S.config.emailEntrada ? `\n\nPara cualquier consulta sobre la comunidad, escriba a ${S.config.emailEntrada}.` : '');
   const m = modal('Enviar comunicación', html, [{ l: 'Cerrar' },
     { l: 'Copiar direcciones', fn: async (b, setErr) => { const { out } = lista(b); const t = out.map(x => x.email).join(', '); try { await navigator.clipboard.writeText(t); setErr(`${out.length} direcciones copiadas.`, true); } catch (e) { setErr(t, true); } return false; } },
     { l: 'Abrir en mi correo', pri: 1, fn: async (b, setErr) => { const { out } = lista(b); if (!out.length) return setErr('No hay destinatarios con email.'), false;
       const to = out.length === 1 ? out[0].email : (S.config.email || ''); const bcc = out.length === 1 ? '' : out.map(x => x.email).join(',');
       const url = `mailto:${encodeURIComponent(to)}?${bcc ? 'bcc=' + encodeURIComponent(bcc) + '&' : ''}subject=${encodeURIComponent($('#cm_as', b).value)}&body=${encodeURIComponent(texto(b))}`;
       if (url.length > 1900) setErr('El mensaje es largo para algunos programas de correo: si no se abre completo, usa "Copiar direcciones" y pega el texto.', true);
+      if (window.registrarEnvio) registrarEnvio({ cid: $('#cm_cid', b).value, uids: [...new Set(out.map(x => x.u.id))], asunto: $('#cm_as', b).value, texto: texto(b) });
       location.href = url; return false; } }], { wide: 1 });
   const draw = () => { const r = lista(m.body); if (!r.sel) { $('#cm_prev', m.body).innerHTML = ''; return; } const sin = r.sel.filter(u => !u.email);
     $('#cm_prev', m.body).innerHTML = `<p style="margin:0"><b>${r.out.length}</b> destinatarios.${sin.length ? ` <span class="pill warn">${sin.length} sin email: ${sin.map(u => esc(u.ref)).join(', ')}</span> <button class="btn link" data-act="altaPropietarios">Recoger sus emails</button>` : ''}</p>`; };

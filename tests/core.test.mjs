@@ -108,3 +108,20 @@ test('Conciliación: parecido entre concepto bancario y nombre', () => {
   assert.equal(GC.parecido('TRANSF DE ELENA NAVARRO RUIZ CUOTA 2B', 'Elena Navarro Ruiz'), 1);
   assert.equal(GC.parecido('RECIBO LIMPIEZAS BRILLO SL', 'Fontanería Ramos'), 0);
 });
+
+test('Correo entrante: aviso de Postmark y formato genérico', async () => {
+  const { normalizar, quitarHtml } = await import('../supabase/functions/correo-entrante/normalizar.mjs');
+  const pm = JSON.parse(readFileSync(new URL('../ejemplos/correo_postmark_ejemplo.json', import.meta.url), 'utf8'));
+  const m = normalizar(pm);
+  assert.equal(m.de, 'elena@ejemplo.es');
+  assert.equal(m.nombre, 'Elena Navarro Ruiz');
+  assert.equal(m.para, 'comunidades@ejemplo.es');
+  assert.equal(m.fecha, '2026-11-14T09:12');
+  assert.match(m.texto, /transferencia por las dos cuotas/);
+  assert.deepEqual(m.adjuntos, [{ nombre: 'justificante.pdf', tipo: 'application/pdf', bytes: 48213 }]);
+  assert.ok(!JSON.stringify(m).includes('JVBERi0'), 'no se guarda el contenido de los adjuntos');
+  const g = normalizar({ from: 'Ana Ruiz <ANA@x.es>', subject: 'Hola', html: '<p>Uno</p><p>Dos &amp; tres</p>' });
+  assert.equal(g.de, 'ana@x.es');
+  assert.equal(g.texto, 'Uno\nDos & tres');
+  assert.equal(quitarHtml('<style>p{}</style><b>x</b>'), 'x');
+});

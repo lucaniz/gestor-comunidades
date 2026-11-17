@@ -45,7 +45,7 @@ create table if not exists public.docs (
 alter table public.docs drop constraint if exists docs_col_check;
 alter table public.docs add constraint docs_col_check check (col in (
   'comunidades','unidades','recibos','gastos','proveedores','juntas','incidencias','config',
-  'ingresos','movimientos','facturas','solicitudes'));
+  'ingresos','movimientos','facturas','solicitudes','mensajes'));
 create index if not exists docs_token_alta_idx on public.docs ((data->>'tokenAlta')) where col = 'comunidades';
 create index if not exists docs_email_idx on public.docs (lower(data->>'email')) where col = 'unidades';
 create index if not exists docs_cid_idx on public.docs (despacho_id, col, (data->>'cid'));
@@ -296,6 +296,50 @@ grant execute on function public.alta_propietario(text, text, text, text, text, 
 grant execute on function public.mi_email() to authenticated;
 grant execute on function public.portal_resumen() to authenticated;
 grant execute on function public.portal_incidencia(uuid, text, text, text) to authenticated;
+
+-- =====================================================================
+-- Correo entrante: la función supabase/functions/correo-entrante recibe cada email
+-- (por ejemplo desde Postmark) y llama a esta función con la clave de servicio.
+-- El email se guarda en el historial del piso cuyo propietario o inquilino tiene esa dirección;
+-- si no coincide con nadie, se descarta, salvo que el despacho active «guardar desconocidos».
+-- =====================================================================
+create or replace function public.correo_entrante(p_despacho uuid, p_token text, p_msg jsonb) returns integer
+language plpgsql security definer set search_path = public as $$
+declare e text := lower(trim(coalesce(p_msg->>'de', ''))); n integer := 0; u record; base jsonb;
+begin
+  if p_token is null or length(p_token) < 20 or not exists (
+      select 1 from public.docs where despacho_id = p_despacho and col = 'config' and id = 'despacho' and data->>'buzonToken' = p_token) then
+    raise exception 'Token del buzón no válido';
+  end if;
+  if coalesce(p_msg->>'messageId', '') <> '' and exists (
+      select 1 from public.docs where despacho_id = p_despacho and col = 'mensajes' and data->>'messageId' = p_msg->>'messageId') then
+    return 0;  -- ya recibido (reintento del proveedor)
+  end if;
+  if (select count(*) from public.docs where despacho_id = p_despacho and col = 'mensajes' and updated_at > now() - interval '1 hour') > 500 then
+    raise exception 'Demasiados emails en la última hora';
+  end if;
+  base := jsonb_build_object('direccion', 'entrada', 'de', e, 'nombre', left(coalesce(p_msg->>'nombre', ''), 200),
+    'asunto', left(coalesce(p_msg->>'asunto', ''), 300), 'texto', left(coalesce(p_msg->>'texto', ''), 20000),
+    'para', left(coalesce(p_msg->>'para', ''), 300), 'fecha', coalesce(nullif(p_msg->>'fecha', ''), to_char(now() at time zone 'Europe/Madrid', 'YYYY-MM-DD"T"HH24:MI')),
+    'messageId', left(coalesce(p_msg->>'messageId', ''), 300), 'adjuntos', coalesce(p_msg->'adjuntos', '[]'::jsonb), 'estado', 'nuevo', 'origen', 'email');
+  for u in select id, data->>'cid' as cid from public.docs
+           where despacho_id = p_despacho and col = 'unidades' and e <> '' and (lower(data->>'email') = e or lower(data->>'inquilinoEmail') = e) loop
+    insert into public.docs (despacho_id, col, id, data) values (p_despacho, 'mensajes', gen_random_uuid()::text, base || jsonb_build_object('cid', u.cid, 'uid', u.id));
+    n := n + 1;
+  end loop;
+  -- Remitente desconocido: se guarda como «sin identificar» solo si el despacho lo ha permitido
+  -- (por defecto se descarta, para no almacenar correo ajeno a las comunidades).
+  if n = 0 and coalesce((select data->>'buzonGuardarDesconocidos' from public.docs where despacho_id = p_despacho and col = 'config' and id = 'despacho'), 'false') = 'true' then
+    insert into public.docs (despacho_id, col, id, data) values (p_despacho, 'mensajes', gen_random_uuid()::text, base || jsonb_build_object('cid', null, 'uid', null));
+  end if;
+  return n;
+end $$;
+revoke all on function public.correo_entrante(uuid, text, jsonb) from public, anon, authenticated;
+do $$ begin
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    grant execute on function public.correo_entrante(uuid, text, jsonb) to service_role;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------
 -- Tiempo real: la aplicación recibe al momento los cambios de otros miembros.

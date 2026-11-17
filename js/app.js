@@ -196,6 +196,8 @@ function unitOpts(cid,v,optional){ const us=S.unidades.filter(u=>u.cid===cid).so
 function provOpts(v){ return '<option value="">— Sin proveedor —</option>'+[...S.proveedores].sort((a,b)=>String(a.nombre).localeCompare(b.nombre,'es')).map(p=>`<option value="${esc(p.id)}" ${p.id===v?'selected':''}>${esc(p.nombre)}</option>`).join(''); }
 // Tipos de campo adicionales que registran otros módulos: FIELD_TYPES[tipo]=(f,v,data,id)=>html; con .dep=true se recalculan al cambiar de comunidad.
 const FIELD_TYPES={};
+// Contadores en el menú lateral que añaden otros módulos: NAV_BADGES[vista]=()=>número
+const NAV_BADGES={};
 // Ajustes antes de guardar un formulario (cálculos derivados): BEFORE_SAVE[colección]=(datos, original)=>void
 const BEFORE_SAVE={};
 function fieldHtml(f,v,data){
@@ -480,6 +482,7 @@ function render(){
   const morTot=Object.values(D.c).reduce((a,x)=>a+(ui.cid==='all'||D.c[ui.cid]===x?x.morosos.size:0),0);
   const incTot=Object.entries(D.c).reduce((a,[id,x])=>a+(ui.cid==='all'||ui.cid===id?x.inc:0),0);
   const badge={recibos:morTot?`<span class="n bad" title="Morosos">${morTot}</span>`:'',incidencias:incTot?`<span class="n">${incTot}</span>`:''};
+  for(const [k,f] of Object.entries(NAV_BADGES)){ const n=f(); if(n) badge[k]=`<span class="n">${n}</span>`; }
   $('#nav').innerHTML=VIEWS.map(([k,l])=>`<a href="#${k}" class="${k===ui.view?'on':''}" ${k===ui.view?'aria-current="page"':''}><span>${l}</span>${badge[k]||''}</a>`).join('');
   $('#csel').innerHTML=comOpts(ui.cid,true);
   $('#mode').innerHTML=S.error?`<span class="pill bad">${esc(S.error)}</span>`

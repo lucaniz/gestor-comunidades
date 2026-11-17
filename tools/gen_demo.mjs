@@ -7,7 +7,7 @@ let seed=7; const rnd=()=>{ seed=(seed*9301+49297)%233280; return seed/233280; }
 function iban(bank){ let acc=''; for(let i=0;i<10;i++) acc+=Math.floor(rnd()*10); const bban=bank+'0418'+'45'+acc; const chk=98-mod97(bban+'ES00'); return 'ES'+String(chk).padStart(2,'0')+bban; }
 function dni(){ const n=10000000+Math.floor(rnd()*89999999); return n+'TRWAGMYFPDXBNJZSQVHLCKE'[n%23]; }
 
-const D={comunidades:[],unidades:[],recibos:[],gastos:[],proveedores:[],juntas:[],incidencias:[],ingresos:[],movimientos:[],facturas:[],solicitudes:[]};
+const D={comunidades:[],unidades:[],recibos:[],gastos:[],proveedores:[],juntas:[],incidencias:[],ingresos:[],movimientos:[],facturas:[],solicitudes:[],mensajes:[]};
 const add=(col,o)=>D[col].push({...o,demo:true});
 
 add('comunidades',{id:'demo-c1',nombre:'C.P. Calle Alameda 14',cif:'H85512347',direccion:'Calle Alameda 14',cp:'28014',ciudad:'Madrid',presidente:'Carmen Ortega Vidal',iban:'ES9121000418450200051332',bic:'',sepaSufijo:'000',presupuestoAnual:14400,fondoReservaPct:10,periodicidad:'trimestral',saldoInicial:6250,saldoFecha:'2026-07-01',honorariosMes:120,notas:'Datos de ejemplo',
@@ -85,6 +85,14 @@ mov(7,'2026-11-15',-12.1,'COMISION MANTENIMIENTO CUENTA');
 // Respuesta del formulario de los vecinos (recogida de emails)
 add('solicitudes',{id:'demo-s1',cid:'demo-c1',piso:'3º B',nombre:'Jorge Molina Santos',email:'jorge.molina@correo-ejemplo.es',telefono:'600000008',rol:'propietario',consentimiento:true,fecha:'2026-11-16T19:42',estado:'pendiente'});
 
+// Correo: emails de vecinos, una comunicación enviada y una nota de llamada
+add('mensajes',{id:'demo-ms1',direccion:'entrada',cid:'demo-c1',uid:'demo-u1-6',de:'elena@ejemplo.es',nombre:'Elena Navarro Ruiz',asunto:'Cuotas pendientes del 2º B',texto:'Buenos días:\n\nHe visto que tengo pendientes las cuotas de julio y octubre. Esta semana hago una transferencia por las dos. ¿Me podéis confirmar el número de cuenta?\n\nGracias,\nElena',fecha:'2026-11-14T09:12',para:'comunidades@ejemplo.es',messageId:'demo-1',adjuntos:[],estado:'nuevo',origen:'email'});
+add('mensajes',{id:'demo-ms2',direccion:'entrada',cid:'demo-c1',uid:'demo-u1-3',de:'marta@ejemplo.es',nombre:'Marta Serrano López',asunto:'Ruido de la puerta del garaje',texto:'Hola, la puerta del garaje hace mucho ruido al cerrarse, sobre todo por la noche. ¿Se puede revisar antes de la junta?\n\nUn saludo.',fecha:'2026-11-16T22:40',para:'comunidades@ejemplo.es',messageId:'demo-2',adjuntos:[{nombre:'video_puerta.mp4',tipo:'video/mp4',bytes:2400000}],estado:'nuevo',origen:'email'});
+add('mensajes',{id:'demo-ms3',direccion:'entrada',cid:null,uid:null,de:'nuevo.propietario@correo-ejemplo.es',nombre:'Daniel Ortiz',asunto:'Soy el nuevo propietario del 2º A',texto:'Buenas tardes, he comprado el 2º A de la calle Alameda 14 y firmamos la escritura la semana pasada. ¿Qué necesitáis para cambiar el titular y la domiciliación?',fecha:'2026-11-17T18:05',para:'comunidades@ejemplo.es',messageId:'demo-3',adjuntos:[],estado:'nuevo',origen:'email'});
+add('mensajes',{id:'demo-ms4',direccion:'salida',cid:'demo-c1',uids:['demo-u1-1','demo-u1-2','demo-u1-3','demo-u1-4','demo-u1-5','demo-u1-6','demo-u1-7','demo-u1-8'],asunto:'Convocatoria Junta General extraordinaria · C.P. Calle Alameda 14',texto:'Convocatoria de la junta del 2 de diciembre.',fecha:'2026-11-10T10:00'});
+add('mensajes',{id:'demo-ms5',direccion:'nota',canal:'llamada',cid:'demo-c1',uid:'demo-u1-4',asunto:'Llama por el recibo devuelto',texto:'Dice que cambió de banco. Enviará el nuevo IBAN y la orden de domiciliación firmada.',fecha:'2026-10-14T12:30'});
+
+config.emailEntrada='comunidades@ejemplo.es';
 D.config=config;
 writeFileSync(new URL('../js/demo.js', import.meta.url), '// Datos de ejemplo ficticios. Generado con: node tools/gen_demo.mjs\nwindow.GC_DEMO = '+JSON.stringify(D)+';\n');
 console.log(Object.fromEntries(Object.entries(D).filter(([k])=>k!=='config').map(([k,v])=>[k,v.length])));

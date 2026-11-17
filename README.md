@@ -23,6 +23,7 @@ Software para **administradores de fincas**: comunidades de propietarios, presup
 | Honorarios | Facturas del despacho a cada comunidad con IVA y retención, numeración automática; registra el gasto en la comunidad. IVA repercutido y retenciones del trimestre. |
 | Impuestos | Ayuda para los modelos 111/190 (retenciones a profesionales), 184 (rentas de la comunidad, reparto por comunero) y 347. |
 | Comunicaciones | Convocatorias, actas, recordatorios de deuda y avisos a todos los propietarios, solo a los morosos o a uno, desde tu programa de correo. |
+| Correo e historial | Los emails que los vecinos envían al buzón de la comunidad llegan a la pestaña **Correo** y al **historial de su piso**, junto con lo que les envías, notas de llamadas y visitas, incidencias y recibos devueltos. Guía: [docs/correo-entrante.md](docs/correo-entrante.md). |
 | Recogida de emails | Enlace y **cartel con QR** para el portal: cada vecino deja su piso, email, teléfono y su consentimiento para recibir las comunicaciones por email. Tú revisas y aceptas cada respuesta. |
 | Portal del propietario | El propietario entra con el email registrado en su piso: ve sus recibos, la próxima junta y los acuerdos, y comunica incidencias. |
 | Incidencias y proveedores | Averías con prioridad, piso, proveedor y estado. Proveedores compartidos entre comunidades. |
@@ -84,8 +85,10 @@ js/store.js           almacenamiento: navegador o Supabase
 js/app.js             interfaz principal
 js/finanzas.js        presupuesto, banco, cuentas, honorarios, impuestos
 js/portal.js          comunicaciones, recogida de emails, portal del propietario, demostración
+js/correo.js          bandeja de correo, historial de cada piso, ajustes del buzón
 js/demo.js            datos ficticios (se generan con `npm run demo`)
 supabase/schema.sql   tablas, reglas de acceso, historial y funciones del portal
+supabase/functions/   función que recibe los emails de los vecinos
 tests/                tests de la lógica y validación SEPA
 ```
 
@@ -93,7 +96,7 @@ tests/                tests de la lógica y validación SEPA
 
 ## Límites conocidos
 
-- Los emails se envían desde tu programa de correo; no hay envío automático desde el servidor.
+- Los emails se envían desde tu programa de correo; no hay envío automático desde el servidor. Los recibidos llegan a la aplicación si se configura el buzón (ver la guía).
 - El saldo y las cuentas se calculan con cobros y pagos registrados (criterio de caja). Para la contabilidad oficial por partida doble, usa tu programa o tu asesor.
 - Los modelos fiscales son una ayuda para prepararlos; revísalos siempre antes de presentarlos.
 
