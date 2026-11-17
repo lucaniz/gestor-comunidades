@@ -1,0 +1,23 @@
+name: Tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Comprobar sintaxis
+        run: for f in js/*.js config.js; do node --check "$f"; done
+      - name: Tests de lógica (reparto, IBAN, SEPA, CSV)
+        run: node --test tests/*.test.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validar la remesa contra el XSD oficial
+        run: |
+          pip install sepaxml lxml
+          python tests/validate_sepa.py
