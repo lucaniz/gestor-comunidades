@@ -1,0 +1,59 @@
+name: Programa de escritorio
+# Genera los instaladores (Windows, Mac, Linux) y los publica en una Release de GitHub.
+# Se lanza al subir una etiqueta de versión (git tag v0.1.0 && git push origin v0.1.0) o a mano desde Actions.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  instaladores:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ''
+          - os: macos-latest
+            args: '--target universal-apple-darwin'
+          - os: ubuntu-22.04
+            args: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Dependencias de Linux
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Dependencias de npm
+        run: npm install --no-audit --no-fund
+      - name: Iconos del programa
+        run: npx tauri icon icons/icon-512.png
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: 'Gestor de Comunidades ${{ github.ref_type == ''tag'' && github.ref_name || ''v__VERSION__'' }}'
+          releaseBody: |
+            Instaladores del Gestor de Comunidades.
+
+            - **Windows:** descarga el `.msi` o el `-setup.exe`. Si Windows avisa de «Windows protegió su PC», pulsa «Más información» → «Ejecutar de todas formas».
+            - **Mac:** descarga el `.dmg`, arrastra la app a Aplicaciones y ábrela. Si macOS no la deja abrir, ve a Ajustes del Sistema → Privacidad y seguridad → «Abrir igualmente».
+            - **Linux:** `.deb` (Ubuntu/Debian) o `.AppImage`.
+
+            Los instaladores no están firmados todavía, por eso el sistema avisa la primera vez.
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}

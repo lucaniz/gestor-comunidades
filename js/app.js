@@ -253,18 +253,37 @@ function modal(title,html,buttons,opts={}){
 }
 function confirmBox(msg,okLabel,danger){ return new Promise(res=>{ let done=false;
   modal('Confirmar',`<p style="margin:0">${msg}</p>`,[{l:'Cancelar',fn:()=>{done=true;res(false);}},{l:okLabel||'Confirmar',pri:!danger,danger,fn:()=>{done=true;res(true);}}],{onClose:()=>{ if(!done) res(false); }}); }); }
-function saveFile(filename,data){
+// Programa de escritorio (Tauri): diálogos y archivos del sistema. En el navegador, descargas normales.
+const TAURI=()=>window.__TAURI__||null;
+async function saveFile(filename,data){
+  const T=TAURI();
+  if(T&&T.dialog&&T.fs){
+    try{ const path=await T.dialog.save({defaultPath:filename}); if(!path) return false;
+      if(data instanceof Blob) await T.fs.writeFile(path,new Uint8Array(await data.arrayBuffer())); else await T.fs.writeTextFile(path,String(data));
+      toast('Guardado: '+String(path).split(/[\\/]/).pop()); return true;
+    }catch(e){ console.warn(e); toast('No se ha podido guardar el archivo: '+(e&&e.message||e)); return false; }
+  }
   const type=/\.csv$/.test(filename)?'text/csv;charset=utf-8':/\.json$/.test(filename)?'application/json':/\.xml$/.test(filename)?'application/xml':/\.html?$/.test(filename)?'text/html;charset=utf-8':'application/octet-stream';
   const blob=data instanceof Blob?data:new Blob([data],{type});
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),5000); return true;
 }
-// Abre un documento imprimible en una pestaña nueva; si el navegador bloquea la ventana, lo descarga.
-function openDoc(html,filename){
+// Abre un documento imprimible: en el programa de escritorio, en el navegador del sistema;
+// en la web, en una pestaña nueva (si el navegador la bloquea, se descarga).
+async function openDoc(html,filename){
+  const T=TAURI();
+  if(T&&T.fs&&T.opener&&T.path){
+    try{ const dir=await T.path.join(await T.path.tempDir(),'gestor-comunidades'); await T.fs.mkdir(dir,{recursive:true}).catch(()=>{});
+      const p=await T.path.join(dir,filename); await T.fs.writeTextFile(p,html); await T.opener.openPath(p); return;
+    }catch(e){ console.warn(e); return saveFile(filename,html); }
+  }
   const w=window.open('','_blank');
   if(w){ w.document.open(); w.document.write(html); w.document.close(); }
   else { saveFile(filename,html); toast('El navegador ha bloqueado la ventana: se ha descargado el documento.'); }
 }
+// Enlaces externos y mailto: con el programa del sistema en escritorio.
+function abrirEnlace(url){ const T=TAURI(); if(T&&T.opener) return T.opener.openUrl(url).catch(()=>{ location.href=url; }); location.href=url; }
+document.addEventListener('click',e=>{ const a=e.target.closest('a[href]'); if(!a||!TAURI()) return; const h=a.getAttribute('href'); if(/^(https?:|mailto:)/i.test(h)){ e.preventDefault(); abrirEnlace(h); } });
 function slug(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40)||'archivo'; }
 
 /* ================= documentos imprimibles ================= */
@@ -457,6 +476,7 @@ function vAjustes(){
     <p class="sub" style="margin:0">Administrador: gestiona el equipo. Editor: trabaja con todos los datos. Solo lectura: consulta sin modificar.</p></div>`;
   const sesion=cloud?`<div class="card"><h2>Tu sesión</h2><dl class="kv"><dt>Usuario</dt><dd>${esc(S.user.email)}</dd><dt>Despacho</dt><dd>${S.despachos.length>1?`<select id="desSel" aria-label="Cambiar de despacho">${S.despachos.map(d=>`<option value="${esc(d.id)}" ${d.id===S.despacho.id?'selected':''}>${esc(d.nombre)}</option>`).join('')}</select>`:esc(S.despacho.nombre)}</dd></dl><div class="acts"><button class="btn" data-act="nuevoDespacho">Crear otro despacho</button><button class="btn" data-act="logout">Cerrar sesión</button></div></div>`:'';
   const donde=cloud?'En el servidor del despacho. Cada despacho solo ve sus propios datos, y dentro de él cada persona según su rol. Los cambios quedan registrados en un historial.'
+    :TAURI()?'En este ordenador, sin cuenta ni servidor. Nadie más los ve. Haz copias de seguridad con regularidad (por ejemplo, una vez por semana) y guárdalas fuera del ordenador.'
     :'En este navegador, sin cuenta. Nadie más los ve, pero si borras los datos del navegador o cambias de ordenador se pierden: descarga copias de seguridad.';
   return `${head('Ajustes')}
   <div class="cols"><div class="stack">
@@ -490,7 +510,7 @@ function render(){
   $('#csel').innerHTML=comOpts(ui.cid,true);
   $('#mode').innerHTML=S.error?`<span class="pill bad">${esc(S.error)}</span>`
     :S.mode==='cloud'?(!allLoaded()?`<span class="pill mut">${S.slow?'Sin respuesta del servidor todavía':'Cargando…'}</span>`:`<span class="pill ok" title="${esc(S.user.email)}">${esc(S.despacho.nombre)}${S.despacho.rol==='lectura'?' · solo lectura':''}</span>`)
-    :S.demo?'<span class="pill">Demostración</span>':S.mode==='local'?`<a class="pill warn" href="#ajustes" title="Los datos se guardan solo en este navegador">Modo prueba: datos en este navegador</a>`:'';
+    :S.demo?'<span class="pill">Demostración</span>':S.mode==='local'?(TAURI()?'<a class="pill" href="#ajustes" title="Los datos se guardan en este ordenador">Datos en este ordenador</a>':`<a class="pill warn" href="#ajustes" title="Los datos se guardan solo en este navegador">Modo prueba: datos en este navegador</a>`):'';
   $('#despachoFoot').innerHTML=esc(S.config.nombre||(S.despacho&&S.despacho.nombre)||'')+(window.GCInstall&&GCInstall.estado()==='boton'?'<button class="btn sm" data-act="instalar" style="margin-top:8px">Instalar la aplicación</button>':'');
   const sy=$('.main').scrollTop;
   if(S.mode==='cargando'||(S.mode==='cloud'&&!allLoaded()&&!S.comunidades.length)){ $('#view').innerHTML=`<p class="sub">${S.slow?'No se puede contactar con el servidor todavía. Comprueba la conexión; la página seguirá intentándolo.':'Cargando datos…'}</p>`; return; }
@@ -620,7 +640,7 @@ function remesa(){
     const xml=buildPain008({msgId,creDtTm:now.toISOString().slice(0,19),cdtrNm:k.nombre,cdtrIban:k.iban,cdtrBic:(k.bic||'').trim(),cdtrId:creditorId(k.cif,k.sepaSufijo),fecha,
       items:ok.map(({r,u})=>({e2e:e2eRecibo(r.id),importe:num(r.importe),mandato:u.mandatoRef,mandatoFecha:u.mandatoFecha,nombre:u.propietario,iban:u.iban,concepto:`${k.nombre} ${u.ref} ${r.concepto}`}))});
     const name=`remesa_${slug(k.nombre)}_${fecha}`; let saved;
-    saved=saveFile(name+'.xml',xml);
+    saved=await saveFile(name+'.xml',xml);
     if(!saved) return setErr('No se ha descargado la remesa.'),false;
     if($('#s_mark',b).checked){ let i=0; for(const {r} of ok){ i++; setErr(`Marcando ${i} de ${ok.length}…`,true); await retry(()=>store.update('recibos',r.id,{estado:'cobrado',fechaCobro:fecha,remesa:msgId,e2e:e2eRecibo(r.id)})); } }
     else { for(const {r} of ok) await retry(()=>store.update('recibos',r.id,{remesa:msgId,e2e:e2eRecibo(r.id)})); }

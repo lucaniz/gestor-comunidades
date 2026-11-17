@@ -5,9 +5,12 @@
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "demo": "node tools/gen_demo.mjs",
-    "ejemplos": "node tools/gen_ejemplos.mjs"
+    "ejemplos": "node tools/gen_ejemplos.mjs",
+    "tauri": "tauri",
+    "escritorio": "tauri build"
   },
   "devDependencies": {
-    "@xmldom/xmldom": "0.8.10"
+    "@xmldom/xmldom": "0.8.10",
+    "@tauri-apps/cli": "2.12.4"
   }
 }

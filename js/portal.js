@@ -41,7 +41,7 @@ function comunicar({ cid, asunto = '', cuerpo = '', soloUid = null, filtro = 'to
       const url = `mailto:${encodeURIComponent(to)}?${bcc ? 'bcc=' + encodeURIComponent(bcc) + '&' : ''}subject=${encodeURIComponent($('#cm_as', b).value)}&body=${encodeURIComponent(texto(b))}`;
       if (url.length > 1900) setErr('El mensaje es largo para algunos programas de correo: si no se abre completo, usa "Copiar direcciones" y pega el texto.', true);
       if (window.registrarEnvio) registrarEnvio({ cid: $('#cm_cid', b).value, uids: [...new Set(out.map(x => x.u.id))], asunto: $('#cm_as', b).value, texto: texto(b) });
-      location.href = url; return false; } }], { wide: 1 });
+      abrirEnlace(url); return false; } }], { wide: 1 });
   const draw = () => { const r = lista(m.body); if (!r.sel) { $('#cm_prev', m.body).innerHTML = ''; return; } const sin = r.sel.filter(u => !u.email);
     $('#cm_prev', m.body).innerHTML = `<p style="margin:0"><b>${r.out.length}</b> destinatarios.${sin.length ? ` <span class="pill warn">${sin.length} sin email: ${sin.map(u => esc(u.ref)).join(', ')}</span> <button class="btn link" data-act="altaPropietarios">Recoger sus emails</button>` : ''}</p>`; };
   ['#cm_cid', '#cm_dest'].forEach(s => $(s, m.body).addEventListener('change', draw)); draw();

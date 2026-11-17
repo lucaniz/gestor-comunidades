@@ -13,7 +13,7 @@
 
   // Estado para la interfaz: 'instalada' | 'boton' | 'ios' | 'manual'
   window.GCInstall = {
-    estado() { return standalone() ? 'instalada' : deferred ? 'boton' : ios() ? 'ios' : 'manual'; },
+    estado() { return (window.__TAURI__ || standalone()) ? 'instalada' : deferred ? 'boton' : ios() ? 'ios' : 'manual'; },
     async instalar() {
       if (!deferred) return false;
       deferred.prompt(); const r = await deferred.userChoice; deferred = null;

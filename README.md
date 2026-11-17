@@ -37,6 +37,16 @@ Software para **administradores de fincas**: comunidades de propietarios, presup
 
 Queda con su icono, se abre en su propia ventana y las mejoras llegan solas.
 
+## Programa de escritorio (Windows, Mac, Linux)
+
+En [Releases](https://github.com/lucaniz/gestor-comunidades/releases) están los instaladores: `.msi` / `-setup.exe` para Windows, `.dmg` para Mac y `.deb` / `.AppImage` para Linux. Es la misma aplicación en su propia ventana; guarda los archivos con el diálogo «Guardar como» del sistema y abre los documentos en el navegador para imprimirlos.
+
+- Sin cuenta, los datos se guardan **en ese ordenador**: no hace falta servidor. Haz copias de seguridad desde Ajustes.
+- Con cuenta (`config.js` rellenado antes de compilar), trabaja con el servidor del despacho igual que la web.
+- Los instaladores **no están firmados**: la primera vez Windows avisa («Más información» → «Ejecutar de todas formas») y macOS pide permiso en Ajustes del Sistema → Privacidad y seguridad → «Abrir igualmente».
+
+Para generar una versión nueva: sube una etiqueta (`git tag v0.2.0 && git push origin v0.2.0`). GitHub Actions compila los instaladores y los publica en Releases. Para compilar en local: `npm install && npx tauri icon icons/icon-512.png && npm run escritorio`.
+
 ## Formas de usarlo
 
 - **Demostración** (`?demo`): datos ficticios de todos los módulos, separados de cualquier otro dato.
@@ -78,6 +88,7 @@ HTML, CSS y JavaScript sin compilación. Para verlo en local basta con abrir `in
 
 ```
 index.html, manifest.webmanifest, sw.js   página y aplicación instalable
+src-tauri/            programa de escritorio (Tauri)
 config.js             conexión a Supabase (vacío = modo prueba)
 css/app.css           estilos
 js/core.js            lógica pura con tests: repartos, IBAN, SEPA, Norma 43, devoluciones, CSV
